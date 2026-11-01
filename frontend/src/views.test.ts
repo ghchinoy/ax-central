@@ -293,6 +293,19 @@ describe("WebMCP ToolHost & AX tools", () => {
     expect(openActivityBtn).not.toBeUndefined();
     expect(openActivityBtn.disabled).toBe(false);
 
+    // Verify Apple Container card uses concise "Restart" verb and flex-wrap (ax-central-x6z)
+    const restartBtn = [
+      ...clustersEl.shadowRoot!.querySelectorAll<HTMLButtonElement>(
+        ".cluster-actions button",
+      ),
+    ].find((b) => b.textContent?.trim() === "Restart")!;
+    expect(restartBtn).not.toBeUndefined();
+    expect(
+      getComputedStyle(
+        clustersEl.shadowRoot!.querySelector(".cluster-actions")!,
+      ).flexWrap,
+    ).toBe("wrap");
+
     // Verify Clusters Output console lines have zero Prettier template whitespace (ax-central-9g0)
     await clusters.localStackUp();
     await new Promise((r) => requestAnimationFrame(r));
@@ -366,6 +379,38 @@ describe("WebMCP ToolHost & AX tools", () => {
       ...logsEl.shadowRoot!.querySelectorAll(".task-log-line"),
     ].map((n) => n.textContent);
     expect(taskLogLines).toContain("Linux aarch64");
+
+    // Verify Resume All (N) and Suspend All (N) bulk action buttons in Activity (ax-central-4dd)
+    store.set({
+      tasks: [
+        ...store.state.tasks,
+        {
+          id: "default/shell-task-02",
+          name: "shell-task-02",
+          atespace: "default",
+          phase: "suspended",
+          age: "1m",
+        },
+        {
+          id: "default/gemini-running-2",
+          name: "gemini-running-2",
+          atespace: "default",
+          phase: "running",
+          age: "1m",
+        },
+      ],
+    });
+    await (overviewEl as unknown as { updateComplete: Promise<boolean> })
+      .updateComplete;
+    const bulkBtns = [
+      ...overviewEl.shadowRoot!.querySelectorAll<HTMLButtonElement>(
+        "#task-board button",
+      ),
+    ].map((b) => b.textContent?.trim());
+    expect(bulkBtns).toContain("Resume All (2)");
+    expect(bulkBtns).toContain("Suspend All (2)");
+    await store.resumeAll();
+    expect(store.state.activity[0]?.title).toBe("Resume 2 tasks");
 
     // 4. Map: verify topology graph renders Workspace -> Task edge
     store.setSection("topology");

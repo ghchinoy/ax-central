@@ -441,6 +441,49 @@ export class Store extends EventTarget {
   apply = (yaml: string) =>
     this.perform("Apply manifest", ["apply", "-f", "-"], yaml);
 
+  async resumeAll(tasks?: AXTask[]): Promise<void> {
+    const targets =
+      tasks ??
+      this.state.tasks.filter(
+        (t) =>
+          t.phase === "suspended" ||
+          t.phase === "failed" ||
+          t.phase === "completed",
+      );
+    if (!targets.length) return;
+    const results = await Promise.all(
+      targets.map((t) => this.ax(["resume", "task", t.name])),
+    );
+    const ok = results.every((r) => r.ok);
+    const firstErr = results.find((r) => !r.ok)?.error ?? "";
+    this.log(
+      `Resume ${targets.length} tasks`,
+      ok ? targets.map((t) => t.name).join(", ") : firstErr,
+      ok,
+    );
+    await this.refresh(true);
+  }
+
+  async suspendAll(tasks?: AXTask[]): Promise<void> {
+    const targets =
+      tasks ??
+      this.state.tasks.filter(
+        (t) => t.phase === "running" || t.phase === "pending",
+      );
+    if (!targets.length) return;
+    const results = await Promise.all(
+      targets.map((t) => this.ax(["suspend", "task", t.name])),
+    );
+    const ok = results.every((r) => r.ok);
+    const firstErr = results.find((r) => !r.ok)?.error ?? "";
+    this.log(
+      `Suspend ${targets.length} tasks`,
+      ok ? targets.map((t) => t.name).join(", ") : firstErr,
+      ok,
+    );
+    await this.refresh(true);
+  }
+
   async makeDefault(ctx: string): Promise<void> {
     if (!this.state.axConfig) return;
     const r = result(

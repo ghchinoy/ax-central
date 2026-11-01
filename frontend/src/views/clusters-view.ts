@@ -424,7 +424,7 @@ export class AxClusters extends LitElement {
             @click=${() => void clusters.localStackUp()}
           >
             ${icon(anyUp ? "refresh" : "play", 12)}
-            ${anyUp ? "Restart Stack" : "Start Stack"}
+            ${anyUp ? "Restart" : "Start"}
           </button>
           ${
             anyUp
@@ -1000,7 +1000,7 @@ export class AxClusters extends LitElement {
       }
       .cluster-grid {
         display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));
+        grid-template-columns: repeat(auto-fill, minmax(330px, 1fr));
         gap: 14px;
       }
       .cluster-empty {
@@ -1087,6 +1087,7 @@ export class AxClusters extends LitElement {
       }
       .cluster-actions {
         gap: 6px;
+        flex-wrap: wrap;
       }
       .new-cluster {
         padding: 14px;

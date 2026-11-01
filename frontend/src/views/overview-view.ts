@@ -1026,6 +1026,15 @@ export class AxOverview extends LitElement {
     const ctx = store.currentContext;
     const subtitle = `${ctx ? (ctx.name === "local" ? "local control plane" : shortName(ctx.name)) : "…"} · atespace ${s.atespace}`;
     const tasks = this.sortedTasks();
+    const resumable = s.tasks.filter(
+      (t) =>
+        t.phase === "suspended" ||
+        t.phase === "failed" ||
+        t.phase === "completed",
+    );
+    const suspendable = s.tasks.filter(
+      (t) => t.phase === "running" || t.phase === "pending",
+    );
 
     return html`
       <div class="board-page">
@@ -1070,6 +1079,31 @@ export class AxOverview extends LitElement {
                     >Click a column to sort. Right-click a task for
                     actions.</span
                   >`
+                : nothing
+            }
+            <span class="spacer"></span>
+            ${
+              resumable.length >= 2
+                ? html`
+                    <button
+                      class="btn small primary"
+                      @click=${() => void store.resumeAll(resumable)}
+                    >
+                      ${icon("play", 12)} Resume All (${resumable.length})
+                    </button>
+                  `
+                : nothing
+            }
+            ${
+              suspendable.length >= 2
+                ? html`
+                    <button
+                      class="btn small"
+                      @click=${() => void store.suspendAll(suspendable)}
+                    >
+                      ${icon("pause", 12)} Suspend All (${suspendable.length})
+                    </button>
+                  `
                 : nothing
             }
           </div>
