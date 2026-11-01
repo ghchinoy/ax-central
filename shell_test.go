@@ -98,7 +98,7 @@ func TestShellCancelRunningStream(t *testing.T) {
 
 	req := StreamRequest{
 		ID:          "s-cancel",
-		CommandLine: "echo ready; sleep 30",
+		CommandLine: "trap '' INT; echo ready; sleep 30",
 	}
 	sh.Stream(
 		req,

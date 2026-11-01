@@ -365,7 +365,7 @@ func (s *Shell) Stream(req StreamRequest, onLine func(string), onExit func(int))
 	}()
 }
 
-// Cancel stops an active stream by sending SIGINT to its process group.
+// Cancel stops an active stream by sending SIGINT and SIGTERM to its process group.
 func (s *Shell) Cancel(id string) {
 	s.mu.Lock()
 	cmd := s.streams[id]
@@ -374,11 +374,13 @@ func (s *Shell) Cancel(id string) {
 		return
 	}
 	if runtime.GOOS != "windows" {
-		if err := syscall.Kill(-cmd.Process.Pid, syscall.SIGINT); err == nil {
+		_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGINT)
+		if err := syscall.Kill(-cmd.Process.Pid, syscall.SIGTERM); err == nil {
 			return
 		}
 	}
 	_ = cmd.Process.Signal(os.Interrupt)
+	_ = cmd.Process.Kill()
 }
 
 // StartSession starts an interactive program with piped stdio and streams raw chunks.
