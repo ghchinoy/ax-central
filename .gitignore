@@ -1,9 +1,13 @@
 build/bin/
+dist/
 frontend/dist/
 frontend/node_modules/
 frontend/wailsjs/
 frontend/.vitest/
 ax-central
+.serena/
+docs/**/*.png
+docs/**/*.svg
 .DS_Store
 *.bak
 .tmp/

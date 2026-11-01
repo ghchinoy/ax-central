@@ -1,0 +1,21 @@
+{
+  "$schema": "https://wails.io/schemas/config.v2.json",
+  "name": "AX Central",
+  "outputfilename": "ax-central",
+  "frontend:dir": "frontend",
+  "frontend:install": "npm install",
+  "frontend:build": "npm run build",
+  "frontend:dev:watcher": "npm run dev",
+  "frontend:dev:serverUrl": "auto",
+  "author": {
+    "name": "G. H. Chinoy",
+    "email": "ghchinoy@gmail.com"
+  },
+  "info": {
+    "companyName": "AX Central",
+    "productName": "AX Central",
+    "productVersion": "0.1.0",
+    "copyright": "Copyright 2026 Google LLC",
+    "comments": "Deploy, design and visualize AX tasks with WebMCP"
+  }
+}

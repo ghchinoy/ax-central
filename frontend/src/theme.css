@@ -1,0 +1,239 @@
+/**
+ * Copyright 2026 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+/*
+ * Colour, type, shape and motion tokens (Luminous 0.15–0.19 pattern).
+ * Custom properties inherit into the shadow roots of the app's components.
+ * Light/dark follows the system setting; set data-theme="light|dark" on
+ * <html> to force one. Tonal surfaces with soft glow shadows instead of
+ * structural borders.
+ */
+:root {
+  color-scheme: light;
+  --font:
+    "Google Sans Flex", "Google Sans Text", "Google Sans", system-ui,
+    -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-display:
+    "Google Sans Flex", "Google Sans Display", "Google Sans", system-ui,
+    -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono:
+    "Google Sans Code", "Google Sans Mono", ui-monospace, "SF Mono", Menlo,
+    "Roboto Mono", monospace;
+  --mono: var(--font-mono);
+
+  /* Surfaces (Luminous light) */
+  --surface: #faf9f9;
+  --surface-bright: #ffffff;
+  --surface-dim: #f2f0f0;
+  --surface-container-low: #f9fafd;
+  --surface-container: #f0f4f9;
+  --surface-container-high: #e8eef6;
+  --surface-container-highest: #dde3e9;
+  --on-surface: #1f1f1f;
+  --on-surface-variant: rgba(0, 0, 0, 0.65);
+  --on-surface-low: rgba(0, 0, 0, 0.08);
+  --outline: #747775;
+  --outline-variant: #c4c7c5;
+
+  /* Brand & semantic containers (WCAG AA verified) */
+  --primary: #0b57d0;
+  --on-primary: #ffffff;
+  --primary-container: #d3e3fd;
+  --on-primary-container: #041e49;
+  --danger: #b3261e;
+  --on-danger: #ffffff;
+  --danger-container: #ffdeec;
+  --on-danger-container: #8c1d18;
+  --warn-container: #ffe2be;
+  --on-warn-container: #7a4100;
+  --ok-container: #daf9d4;
+  --on-ok-container: #006c43;
+
+  /* Ambient & categorical agent tokens (Luminous 0.15–0.18) */
+  --surface-accent: #9dd2ff;
+  --accent-task: #969dff;
+  --agents-violet: #f5eeff;
+  --agents-on-violet: #4f209c;
+
+  /* AX semantic accents & backward-compatible aliases */
+  --bg: var(--surface);
+  --sidebar: var(--surface-container-low);
+  --surface-2: var(--surface-container);
+  --surface-hover: var(--surface-container-high);
+  --border: rgba(0, 0, 0, 0.08);
+  --border-strong: var(--outline-variant);
+  --text: var(--on-surface);
+  --text-2: var(--on-surface-variant);
+  --text-3: #525553;
+  --accent: var(--primary);
+  --accent-soft: color-mix(in srgb, var(--primary) 12%, transparent);
+  --purple: #59259e;
+  --teal: #00655b;
+  --orange: #8f4300;
+  --red: var(--danger);
+  --green: #006837;
+  --warn: #7a4100;
+  --grid-dot: rgba(0, 0, 0, 0.1);
+  --console: #141416;
+  --console-text: #e2e2e6;
+
+  /* State layers (theme-neutral currentColor mix) */
+  --state-hover: color-mix(in srgb, currentColor 8%, transparent);
+  --state-pressed: color-mix(in srgb, currentColor 12%, transparent);
+
+  /* Code surface */
+  --code-bg: #141414;
+  --code-fg: #ffffff;
+  --code-border: rgba(255, 255, 255, 0.12);
+
+  /* Elevation & shape */
+  --shadow-1: 0 0 20px 0 rgba(0, 0, 0, 0.04);
+  --shadow-2: 0 0 20px 0 rgba(0, 0, 0, 0.11);
+  --shadow: var(--shadow-1);
+  --shadow-lift: var(--shadow-2);
+  --radius-xs: 4px;
+  --radius-s: 8px;
+  --radius-m: 12px;
+  --radius-l: 20px;
+  --radius-xl: 28px;
+  --radius: var(--radius-m);
+  --titlebar: 52px;
+  --focus: 3px solid var(--on-surface);
+
+  /* Motion Tokens 2.0 (Luminous 0.18) */
+  --duration-fast: 150ms;
+  --duration-medium: 200ms;
+  --duration-slide: 300ms;
+  --duration-slow: 500ms;
+  --easing-standard: cubic-bezier(0.2, 0, 0, 1);
+  --easing-emphasized: cubic-bezier(0.35, 0, 0, 1);
+  --easing-spring: cubic-bezier(0.27, 1.06, 0.18, 1);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --surface: #0f0f0f;
+    --surface-bright: #1f1f1f;
+    --surface-dim: #171717;
+    --surface-container-low: #1c1c1d;
+    --surface-container: #202021;
+    --surface-container-high: #2a2b2c;
+    --surface-container-highest: #353637;
+    --on-surface: #e6e6e6;
+    --on-surface-variant: rgba(255, 255, 255, 0.72);
+    --on-surface-low: rgba(255, 255, 255, 0.12);
+    --outline: #8e918f;
+    --outline-variant: #444746;
+    --primary: #a7c7fa;
+    --on-primary: #072e70;
+    --primary-container: #0842a1;
+    --on-primary-container: #d3e3fd;
+    --danger: #f2b8b5;
+    --on-danger: #601410;
+    --danger-container: #3c0202;
+    --on-danger-container: #f9dedc;
+    --warn-container: #4d2600;
+    --on-warn-container: #ffe2be;
+    --ok-container: #002220;
+    --on-ok-container: #0ebc5f;
+    --surface-accent: #14204f;
+    --accent-task: #3d2898;
+    --agents-violet: #2d1b4e;
+    --agents-on-violet: #e5d4ff;
+    --code-bg: #171717;
+    --shadow-1: 0 0 20px 0 rgba(0, 0, 0, 0.28);
+    --shadow-2: 0 0 20px 0 rgba(0, 0, 0, 0.4);
+    --border: rgba(255, 255, 255, 0.09);
+    --text-3: #a8abb0;
+    --purple: #d4b5ff;
+    --teal: #6ee7d7;
+    --orange: #ffb870;
+    --green: #6dd58c;
+    --warn: #ffca6b;
+    --grid-dot: rgba(255, 255, 255, 0.08);
+    --console: #111113;
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --surface: #0f0f0f;
+  --surface-bright: #1f1f1f;
+  --surface-dim: #171717;
+  --surface-container-low: #1c1c1d;
+  --surface-container: #202021;
+  --surface-container-high: #2a2b2c;
+  --surface-container-highest: #353637;
+  --on-surface: #e6e6e6;
+  --on-surface-variant: rgba(255, 255, 255, 0.72);
+  --on-surface-low: rgba(255, 255, 255, 0.12);
+  --outline: #8e918f;
+  --outline-variant: #444746;
+  --primary: #a7c7fa;
+  --on-primary: #072e70;
+  --primary-container: #0842a1;
+  --on-primary-container: #d3e3fd;
+  --danger: #f2b8b5;
+  --on-danger: #601410;
+  --danger-container: #3c0202;
+  --on-danger-container: #f9dedc;
+  --warn-container: #4d2600;
+  --on-warn-container: #ffe2be;
+  --ok-container: #002220;
+  --on-ok-container: #0ebc5f;
+  --surface-accent: #14204f;
+  --accent-task: #3d2898;
+  --agents-violet: #2d1b4e;
+  --agents-on-violet: #e5d4ff;
+  --code-bg: #171717;
+  --shadow-1: 0 0 20px 0 rgba(0, 0, 0, 0.28);
+  --shadow-2: 0 0 20px 0 rgba(0, 0, 0, 0.4);
+  --border: rgba(255, 255, 255, 0.09);
+  --text-3: #9a9da1;
+  --purple: #c59cff;
+  --teal: #5ce1cf;
+  --orange: #ffb463;
+  --green: #5ce07c;
+  --warn: #f7be57;
+  --grid-dot: rgba(255, 255, 255, 0.08);
+  --console: #111113;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --duration-fast: 0ms;
+    --duration-medium: 0ms;
+    --duration-slide: 0ms;
+    --duration-slow: 0ms;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+  background: var(--surface);
+  color: var(--on-surface);
+  font-family: var(--font);
+  font-size: 13px;
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
