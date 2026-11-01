@@ -63,6 +63,7 @@ const envRows = (text: string, prev: KeyValue[]): KeyValue[] =>
 export class AxDesigner extends LitElement {
   @state() private result: ApplyResult = null;
   @state() private applying = false;
+  @state() private createdTaskName: string | null = null;
   @state() private split =
     Number(localStorage.getItem("ax-central.designer.split")) || 0.5;
   @state() private templatesOpen = false;
@@ -79,6 +80,7 @@ export class AxDesigner extends LitElement {
     super.connectedCallback();
     this.offDesigner = designer.subscribe(() => {
       this.result = null;
+      this.createdTaskName = null;
       this.requestUpdate();
     });
     this.offStore = store.subscribe(() => this.requestUpdate());
@@ -109,15 +111,41 @@ export class AxDesigner extends LitElement {
 
   private async apply(): Promise<void> {
     const draft = designer.draft;
-    if (!canApply(draft) || this.applying) return;
+    if (!canApply(draft) || this.applying || this.createdTaskName) return;
     this.applying = true;
     this.result = null;
     const r = await store.apply(generate(draft));
     this.result = { ok: r.ok, text: r.ok ? r.stdout.trim() : r.error };
-    if (r.ok && !draft.rawMode) {
-      designer.set({ name: withID(draft.name) });
+    if (r.ok) {
+      this.createdTaskName = draft.name;
     }
     this.applying = false;
+  }
+
+  private async resumeAndOpenCreated(): Promise<void> {
+    const name = this.createdTaskName;
+    if (!name) return;
+    const ates = designer.draft.atespace || store.state.atespace || "default";
+    const t = store.state.tasks.find((x) => x.name === name) ?? {
+      id: `${ates}/${name}`,
+      name,
+      atespace: ates,
+      phase: "suspended",
+      age: "0s",
+    };
+    await store.resume(t);
+    const refreshed = store.state.tasks.find((x) => x.name === name);
+    store.set({ selectedTaskID: refreshed?.id ?? t.id });
+    store.setSection("overview");
+  }
+
+  private viewCreatedInActivity(): void {
+    const name = this.createdTaskName;
+    if (!name) return;
+    const ates = designer.draft.atespace || store.state.atespace || "default";
+    const t = store.state.tasks.find((x) => x.name === name);
+    store.set({ selectedTaskID: t?.id ?? `${ates}/${name}` });
+    store.setSection("overview");
   }
 
   private startDrag = (e: MouseEvent): void => {
@@ -172,12 +200,14 @@ export class AxDesigner extends LitElement {
     control: TemplateResult,
     error?: string | null,
     warn = false,
+    hint?: string,
   ): TemplateResult {
     return html`
       <div class="ds-field">
         <label>${label}</label>
         <div class="col" style="gap:3px;min-width:0">
           ${control}
+          ${hint ? html`<span class="caption faint">${hint}</span>` : nothing}
           ${
             error
               ? html`<span class="ds-error caption ${warn ? "warn" : ""}"
@@ -735,6 +765,9 @@ export class AxDesigner extends LitElement {
                     command: (e.target as HTMLInputElement).value,
                   })}
               />`,
+              null,
+              false,
+              "Overrides the container entrypoint (spec.command argv). Leave blank to let the runner image use its default entrypoint.",
             )}
           `,
         )}
@@ -1305,12 +1338,40 @@ ${lines.map(this.renderYamlLine)}</pre>`
               </button>
               <button
                 class="btn primary"
-                ?disabled=${!canApply(d) || this.applying}
+                ?disabled=${!canApply(d) || this.applying || !!this.createdTaskName}
                 title="Create (⌘↩)"
                 @click=${() => void this.apply()}
               >
-                ${icon("play", 13)} ${this.applying ? "Creating…" : "Create"}
+                ${icon(this.createdTaskName ? "check" : "play", 13)}
+                ${
+                  this.applying
+                    ? "Creating…"
+                    : this.createdTaskName
+                      ? "Created"
+                      : "Create"
+                }
               </button>
+              ${
+                this.createdTaskName
+                  ? html`
+                      <button
+                        class="btn primary"
+                        title="Resume ${this.createdTaskName} and open in Activity"
+                        @click=${() => void this.resumeAndOpenCreated()}
+                      >
+                        ${icon("play", 13)} Resume & Open in Activity
+                      </button>
+                      <button
+                        class="btn"
+                        title="Generate a fresh task ID to create another copy"
+                        @click=${() =>
+                          designer.set({ name: withID(designer.draft.name) })}
+                      >
+                        ${icon("plus", 13)} New Task ID
+                      </button>
+                    `
+                  : nothing
+              }
             </div>
           </div>
         </div>
@@ -1371,6 +1432,18 @@ ${lines.map(this.renderYamlLine)}</pre>`
                         (this.result.ok ? "Created" : "Failed")
                       }
                     </span>
+                    ${
+                      this.result.ok && this.createdTaskName
+                        ? html`
+                            <button
+                              class="btn small ghost"
+                              @click=${() => this.viewCreatedInActivity()}
+                            >
+                              View in Activity →
+                            </button>
+                          `
+                        : nothing
+                    }
                   </div>
                 `
               : nothing

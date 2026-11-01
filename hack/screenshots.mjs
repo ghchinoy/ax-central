@@ -199,7 +199,9 @@ async function main() {
               await app.host.call("list_tasks", {}, sig);
               await app.host.call("check_prerequisites", {}, sig);
             }
-            const badge = app?.shadowRoot?.querySelector(".webmcp-badge");
+            const badge = app?.shadowRoot?.querySelector(
+              ".webmcp-btn, .webmcp-badge",
+            );
             badge?.click();
           });
         },

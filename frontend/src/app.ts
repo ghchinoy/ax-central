@@ -355,20 +355,6 @@ export class AxCentral extends LitElement {
           <span>AX Central</span>
         </div>
 
-        <button
-          class="webmcp-badge ${this.host.mode} ${s.webmcpOpen ? "active" : ""}"
-          title="Toggle WebMCP Inspector (⌘I)"
-          aria-pressed=${s.webmcpOpen ? "true" : "false"}
-          @click=${() => store.set({ webmcpOpen: !s.webmcpOpen })}
-        >
-          ${this.runningTools.length > 0 ? renderSpinner() : nothing}
-          ${
-            this.host.mode === "webmcp"
-              ? "WebMCP: document.modelContext"
-              : "WebMCP: in-app registry"
-          }
-        </button>
-
         <div class="spacer"></div>
 
         <div class="no-drag row">
@@ -474,6 +460,20 @@ export class AxCentral extends LitElement {
             ${icon("refresh", 14, {
               className: s.isRefreshing ? "spin" : "",
             })}
+          </button>
+
+          <button
+            class="btn webmcp-btn ${s.webmcpOpen ? "active" : ""}"
+            title="Toggle WebMCP Inspector (⌘I)"
+            aria-pressed=${s.webmcpOpen ? "true" : "false"}
+            @click=${() => store.set({ webmcpOpen: !s.webmcpOpen })}
+          >
+            ${
+              this.runningTools.length > 0
+                ? renderSpinner()
+                : icon("w3c", 14, { color: "var(--primary)" })
+            }
+            <span>WebMCP</span>
           </button>
 
           <button
@@ -825,28 +825,10 @@ export class AxCentral extends LitElement {
         height: 22px;
         width: auto;
       }
-      .webmcp-badge {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        font-size: 12px;
-        font-weight: 500;
-        padding: 4px 11px;
-        border-radius: 999px;
-        border: 1px solid transparent;
-        background: var(--warn-container);
-        color: var(--on-warn-container);
-        cursor: pointer;
-        transition:
-          transform var(--duration-fast) var(--easing-standard),
-          box-shadow var(--duration-fast) var(--easing-standard);
-      }
-      .webmcp-badge.webmcp {
-        background: var(--ok-container);
-        color: var(--on-ok-container);
-      }
-      .webmcp-badge.active {
-        box-shadow: 0 0 0 2px var(--primary);
+      .webmcp-btn.active {
+        background: var(--primary-container);
+        color: var(--on-primary-container);
+        border-color: var(--primary);
       }
       .workspace-row {
         flex: 1;

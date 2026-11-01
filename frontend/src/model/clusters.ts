@@ -686,9 +686,9 @@ export class ClustersStore extends EventTarget {
   }
 
   async openLocalStack(): Promise<void> {
-    await store.loadContexts();
     store.setScope({ context: "local" });
     store.setSection("overview");
+    await store.loadContexts();
   }
 
   async addToKubeconfig(name: string): Promise<boolean> {
@@ -720,7 +720,11 @@ export class ClustersStore extends EventTarget {
   }
 
   private append(text: string, header?: ConsoleLine["header"]): void {
-    this.pending.push({ id: this.lineID++, text, header });
+    this.pending.push({
+      id: this.lineID++,
+      text: text.replace(/\r/g, ""),
+      header,
+    });
     if (this.flushScheduled) return;
     this.flushScheduled = true;
     requestAnimationFrame(() => {
@@ -785,6 +789,13 @@ export class ClustersStore extends EventTarget {
       ok ? "ok" : "fail",
     );
     if (ok && op.kind === "create") this.setForm({ name: "" });
+    if (
+      ok &&
+      (op.kind === "local-up" || op.kind === "local-reset") &&
+      store.state.context === "local"
+    ) {
+      void store.refresh(true);
+    }
     void this.refresh();
     return ok;
   }

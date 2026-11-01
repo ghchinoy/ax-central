@@ -14,7 +14,14 @@
  * limitations under the License.
  */
 
-import { css, html, LitElement, nothing, type PropertyValues } from "lit";
+import {
+  css,
+  html,
+  LitElement,
+  nothing,
+  type PropertyValues,
+  type TemplateResult,
+} from "lit";
 import { customElement, property, query, state } from "lit/decorators.js";
 import { ensureStudioBridge } from "../bridge";
 import { icon } from "../icons";
@@ -42,7 +49,7 @@ export class AxTaskLogs extends LitElement {
   @state() private error = "";
   @state() private expanded =
     new URLSearchParams(location.search).get("logs") === "expanded";
-  @query(".task-logs") private box?: HTMLPreElement;
+  @query(".task-logs") private box?: HTMLElement;
 
   private pinned = true;
   private cleanupStream: (() => void) | null = null;
@@ -109,7 +116,8 @@ export class AxTaskLogs extends LitElement {
     let other = "";
     const t = this.task;
 
-    const pushLine = (text: string, time = "") => {
+    const pushLine = (rawText: string, time = "") => {
+      const text = rawText.replace(/\r/g, "");
       pending.push({
         id: next++,
         time,
@@ -207,33 +215,30 @@ export class AxTaskLogs extends LitElement {
     };
   }
 
+  private renderLogLine = (l: LogLine): TemplateResult => {
+    const cls = `task-log-line ${l.runner ? "runner" : ""}`.trim();
+    const text = l.text.replace(/\r/g, "") || " ";
+    return html`<div class=${cls} title=${l.time}>${text}</div>`;
+  };
+
   private renderBody() {
+    const emptyText =
+      this.status === "following"
+        ? "Waiting for output…"
+        : this.status === "failed"
+          ? this.error
+          : "No output in the last 24 hours.";
+    const emptyLine = html`<span class="faint">${emptyText}</span>`;
     return html`
-      <pre
+      <div
         class="sandbox-output task-logs selectable"
         @scroll=${(e: Event) => {
           const el = e.currentTarget as HTMLElement;
           this.pinned = el.scrollHeight - el.scrollTop - el.clientHeight < 24;
         }}
       >
-${
-          this.lines.length === 0
-            ? html`<span class="faint"
-                >${
-                  this.status === "following"
-                    ? "Waiting for output…"
-                    : this.status === "failed"
-                      ? this.error
-                      : "No output in the last 24 hours."
-                }</span
-              >`
-            : this.lines.map(
-                (l) =>
-                  html`<div class=${l.runner ? "runner" : ""} title=${l.time}>
-                    ${l.text}
-                  </div>`,
-              )
-        }</pre>
+        ${this.lines.length === 0 ? emptyLine : this.lines.map(this.renderLogLine)}
+      </div>
       <div class="row task-logs-foot caption faint">
         ${
           this.status === "following"
@@ -325,14 +330,17 @@ ${
         overflow: auto;
         background: var(--console);
         color: var(--console-text);
+        font-family: var(--font-mono);
         font-size: 11.5px;
-        white-space: pre-wrap;
-        word-break: break-all;
       }
       .task-logs {
         min-height: 64px;
         max-height: 280px;
         line-height: 1.45;
+      }
+      .task-log-line {
+        white-space: pre-wrap;
+        word-break: break-all;
       }
       .task-logs .runner {
         color: #8d8d93;

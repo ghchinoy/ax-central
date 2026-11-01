@@ -335,7 +335,7 @@ func (s *Shell) Stream(req StreamRequest, onLine func(string), onExit func(int))
 		// Increase max token size to 1 MiB for long JSON log lines from kubectl.
 		scanner.Buffer(make([]byte, 64*1024), 1024*1024)
 		for scanner.Scan() {
-			emitLine(scanner.Text())
+			emitLine(strings.TrimSuffix(scanner.Text(), "\r"))
 		}
 	}
 
@@ -365,7 +365,8 @@ func (s *Shell) Stream(req StreamRequest, onLine func(string), onExit func(int))
 	}()
 }
 
-// Cancel stops an active stream by sending SIGINT and SIGTERM to its process group.
+// Cancel stops an active stream by sending SIGINT and SIGTERM to its process group,
+// escalating to SIGKILL if the process group does not exit promptly.
 func (s *Shell) Cancel(id string) {
 	s.mu.Lock()
 	cmd := s.streams[id]
@@ -373,11 +374,20 @@ func (s *Shell) Cancel(id string) {
 	if cmd == nil || cmd.Process == nil {
 		return
 	}
+	pid := cmd.Process.Pid
 	if runtime.GOOS != "windows" {
-		_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGINT)
-		if err := syscall.Kill(-cmd.Process.Pid, syscall.SIGTERM); err == nil {
-			return
-		}
+		_ = syscall.Kill(-pid, syscall.SIGINT)
+		_ = syscall.Kill(-pid, syscall.SIGTERM)
+		go func() {
+			time.Sleep(100 * time.Millisecond)
+			s.mu.Lock()
+			stillRunning := s.streams[id] == cmd
+			s.mu.Unlock()
+			if stillRunning {
+				_ = syscall.Kill(-pid, syscall.SIGKILL)
+			}
+		}()
+		return
 	}
 	_ = cmd.Process.Signal(os.Interrupt)
 	_ = cmd.Process.Kill()

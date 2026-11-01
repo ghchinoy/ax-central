@@ -26,6 +26,7 @@ import { customElement, query, state } from "lit/decorators.js";
 import { type IconName, icon } from "../icons";
 import {
   type Cluster,
+  type ConsoleLine,
   type Operation,
   type Replicas,
   STAGES,
@@ -402,12 +403,12 @@ export class AxClusters extends LitElement {
               ? html`
                   <button
                     class="btn small primary"
-                    ?disabled=${busy || current}
+                    ?disabled=${busy}
                     title="Switch AX Central to the local Apple container stack"
                     @click=${() => void clusters.openLocalStack()}
                   >
                     ${icon("external-link", 12)}
-                    ${current ? "Open" : "Open in Central"}
+                    ${current ? "Open Activity" : "Open in Central"}
                   </button>
                 `
               : nothing
@@ -536,7 +537,7 @@ export class AxClusters extends LitElement {
               ? html`
                   <button
                     class="btn small primary"
-                    ?disabled=${busy || current}
+                    ?disabled=${busy}
                     title=${
                       cl.inKubeconfig
                         ? `Switch AX Central to ${cl.context}`
@@ -545,7 +546,7 @@ export class AxClusters extends LitElement {
                     @click=${() => void clusters.open(cl)}
                   >
                     ${icon("external-link", 12)}
-                    ${current ? "Open" : "Open in Central"}
+                    ${current ? "Open Activity" : "Open in Central"}
                   </button>
                 `
               : nothing
@@ -861,6 +862,12 @@ export class AxClusters extends LitElement {
     `;
   }
 
+  private renderConsoleLine = (l: ConsoleLine): TemplateResult => {
+    const cls = `console-line ${l.header ?? ""}`.trim();
+    const text = l.text.replace(/\r/g, "") || " ";
+    return html`<div class=${cls}>${text}</div>`;
+  };
+
   override render() {
     const c = clusters.state;
     const running = c.op?.status === "running";
@@ -953,13 +960,7 @@ export class AxClusters extends LitElement {
                         ? html`<div class="console-empty">
                             Create a cluster, or install AX on an existing one.
                           </div>`
-                        : c.log.map(
-                            (l) => html`
-                              <div class="console-line ${l.header ?? ""}">
-                                ${l.text || " "}
-                              </div>
-                            `,
-                          )
+                        : c.log.map(this.renderConsoleLine)
                     }
                   </div>
                 `

@@ -408,8 +408,14 @@ export class AxTaskInspector extends LitElement {
                       </div>
                       ${
                         this.showManifest
-                          ? html`<pre class="manifest selectable">
-${detail?.manifest || "loading…"}</pre>`
+                          ? html`<div class="manifest selectable">
+                              <span class="manifest-text"
+                                >${(detail?.manifest || "loading…").replace(
+                                  /\r/g,
+                                  "",
+                                )}</span
+                              >
+                            </div>`
                           : nothing
                       }
                     </section>
@@ -534,15 +540,20 @@ ${detail?.manifest || "loading…"}</pre>`
         transform: rotate(90deg);
       }
       .manifest {
+        display: flex;
         margin: 8px 0 0;
         padding: 10px 12px;
         border-radius: var(--radius-s);
         background: var(--surface-container);
         border: 1px solid var(--border);
+        font-family: var(--font-mono);
         font-size: 11px;
         line-height: 1.5;
         overflow: auto;
         max-height: 360px;
+      }
+      .manifest-text {
+        white-space: pre;
       }
       .lifecycle {
         display: flex;

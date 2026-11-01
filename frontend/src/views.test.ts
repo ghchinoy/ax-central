@@ -19,6 +19,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import "./app";
 import { type AxCentral, renderProseWithBdi } from "./app";
 import { createFallbackStudio } from "./bridge";
+import { clusters } from "./model/clusters";
 import {
   canApply,
   designer,
@@ -277,14 +278,40 @@ describe("WebMCP ToolHost & AX tools", () => {
     await el.updateComplete;
     const sig = new AbortController().signal;
 
-    // 1. Clusters: verify local stack & switch to local context
+    // 1. Clusters: verify Open Activity button is enabled even when current === true (ax-central-ajh)
     store.setSection("clusters");
     await el.updateComplete;
-    await el.host.call("manage_local_stack", { action: "use" }, sig);
+    const clustersEl = el.shadowRoot!.querySelector("ax-clusters")!;
+    await clusters.init();
+    await (clustersEl as unknown as { updateComplete: Promise<boolean> })
+      .updateComplete;
+    const openActivityBtn = [
+      ...clustersEl.shadowRoot!.querySelectorAll<HTMLButtonElement>(
+        ".cluster-actions button",
+      ),
+    ].find((b) => b.textContent?.includes("Open Activity"))!;
+    expect(openActivityBtn).not.toBeUndefined();
+    expect(openActivityBtn.disabled).toBe(false);
+
+    // Verify Clusters Output console lines have zero Prettier template whitespace (ax-central-9g0)
+    await clusters.localStackUp();
+    await new Promise((r) => requestAnimationFrame(r));
+    await (clustersEl as unknown as { updateComplete: Promise<boolean> })
+      .updateComplete;
+    const consoleLines = [
+      ...clustersEl.shadowRoot!.querySelectorAll(".console-line"),
+    ].map((n) => n.textContent);
+    expect(consoleLines).toEqual([
+      "▶ Start Apple Container stack (ate-local)",
+      "==> Completed stream command",
+      "✓ Start Apple Container stack (ate-local) done",
+    ]);
+
+    openActivityBtn.click();
     expect(store.state.context).toBe("local");
     expect(store.state.section).toBe("overview");
 
-    // 2. Deploy: load plain ate-local debian:12 template, attach workspace, and apply
+    // 2. Deploy: load plain ate-local debian:12 template, verify Command caption & Create confirmation state (ax-central-9fm)
     await el.host.call("load_template", { template: "ate-local" }, sig);
     expect(store.state.section).toBe("designer");
     expect(designer.draft.image).toBe("debian:12");
@@ -292,10 +319,36 @@ describe("WebMCP ToolHost & AX tools", () => {
       workspaceMode: "existing",
       existingWorkspace: "humanize-gemini",
     });
-    const applied = await el.host.call("apply_manifest", {}, sig);
-    expect(applied.applied).toBe(true);
+    await el.updateComplete;
+    const designerEl = el.shadowRoot!.querySelector("ax-designer")!;
+    await (designerEl as unknown as { updateComplete: Promise<boolean> })
+      .updateComplete;
+    expect(designerEl.shadowRoot!.textContent).toContain(
+      "Overrides the container entrypoint (spec.command argv).",
+    );
 
-    // 3. Activity & Logs: select task on local context and verify <ax-task-logs> streams container logs
+    const createBtn = [
+      ...designerEl.shadowRoot!.querySelectorAll<HTMLButtonElement>(
+        ".designer-head button.primary",
+      ),
+    ][0]!;
+    createBtn.click();
+    await new Promise((r) => setTimeout(r, 30));
+    await (designerEl as unknown as { updateComplete: Promise<boolean> })
+      .updateComplete;
+    expect(createBtn.disabled).toBe(true);
+    expect(createBtn.textContent?.trim()).toBe("Created");
+    expect(
+      designerEl.shadowRoot!.querySelector(".foot-result.ok"),
+    ).not.toBeNull();
+    const resumeOpenBtn = [
+      ...designerEl.shadowRoot!.querySelectorAll<HTMLButtonElement>(
+        ".designer-head button",
+      ),
+    ].find((b) => b.textContent?.includes("Resume & Open in Activity"));
+    expect(resumeOpenBtn).not.toBeUndefined();
+
+    // 3. Activity & Logs: select task on local context and verify <ax-task-logs> lines have zero Prettier whitespace (ax-central-9g0)
     store.setSection("overview");
     await el.host.call("select_task", { name: "gemini-a1b2c3" }, sig);
     await el.updateComplete;
@@ -309,9 +362,10 @@ describe("WebMCP ToolHost & AX tools", () => {
     expect(logsEl).not.toBeNull();
     await (logsEl as unknown as { updateComplete: Promise<boolean> })
       .updateComplete;
-    const logText =
-      logsEl.shadowRoot!.querySelector(".task-logs")?.textContent ?? "";
-    expect(logText).toContain("Linux aarch64");
+    const taskLogLines = [
+      ...logsEl.shadowRoot!.querySelectorAll(".task-log-line"),
+    ].map((n) => n.textContent);
+    expect(taskLogLines).toContain("Linux aarch64");
 
     // 4. Map: verify topology graph renders Workspace -> Task edge
     store.setSection("topology");
@@ -504,6 +558,9 @@ describe("Luminous 0.15–0.19 patterns & WCAG 2 A/AA in ax-central", () => {
     const root = el.shadowRoot!;
     expect(root.querySelector("ax-overview")).not.toBeNull();
     expect(root.querySelector("ax-webmcp-drawer")).not.toBeNull();
+    const webmcpBtn = root.querySelector(".toolbar .no-drag.row .webmcp-btn");
+    expect(webmcpBtn).not.toBeNull();
+    expect(webmcpBtn?.textContent?.trim()).toBe("WebMCP");
 
     for (const section of [
       "overview",
