@@ -14,7 +14,7 @@
 
 # AX Central (Wails v2 + Lit WebComponents + WebMCP). See README.md.
 
-.PHONY: help build wails-build dev run-frontend test test-go test-frontend lint security check smoke-local format doctor bootstrap version release-darwin clean
+.PHONY: help build wails-build dev run-frontend test test-go test-frontend lint security check smoke-local diagrams screenshots format doctor bootstrap version release-darwin clean
 
 VERSION := $(shell jq -r .info.productVersion wails.json 2>/dev/null || echo 0.1.0)
 LDFLAGS := -s -w -X main.appVersion=$(VERSION)
@@ -31,6 +31,8 @@ help:
 	@echo "make lint           - gofmt, go vet, golangci-lint, bash -n, tsc, prettier"
 	@echo "make security       - npm audit + node-security-audit + Go readability checks"
 	@echo "make smoke-local    - run E2E debian:12 task smoke test against local Apple container stack"
+	@echo "make diagrams       - render Luminous Graphviz .dot diagrams to light/dark WebP"
+	@echo "make screenshots    - capture light/dark WebP UI screenshots via Playwright + cwebp"
 	@echo "make format         - gofmt -w + prettier --write"
 	@echo "make doctor         - audit ax, ate-local variant, ax-experiments & kind prerequisites"
 	@echo "make bootstrap      - install/build missing ate-local & ax-experiments prerequisites"
@@ -83,6 +85,16 @@ check: lint security test
 
 smoke-local:
 	bash hack/smoke-local.sh
+
+diagrams:
+	@for f in docs/diagrams/*.dot; do \
+		base=$${f%.dot}; \
+		gvpr -c -f ../graphviz-style/theme/luminous.gvpr -a light "$$f" | dot -Twebp -o "$${base}-light.webp"; \
+		gvpr -c -f ../graphviz-style/theme/luminous.gvpr -a dark  "$$f" | dot -Twebp -o "$${base}-dark.webp"; \
+	done
+
+screenshots: frontend/node_modules
+	node hack/screenshots.mjs
 
 format: frontend/node_modules
 	gofmt -s -w .

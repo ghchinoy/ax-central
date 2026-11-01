@@ -2,6 +2,11 @@
 
 This tutorial walks through booting the local Apple `container` (`ate-local`) stack on macOS, deploying a `debian:12` task with a workspace, streaming guest logs, opening an interactive `ax ssh` shell, and calling AX tools through the WebMCP Inspector. The entire walkthrough runs locally in under two minutes and requires no cloud credentials or API keys.
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../diagrams/02-task-lifecycle-dark.webp">
+  <img alt="AX Central task lifecycle diagram" src="../diagrams/02-task-lifecycle-light.webp">
+</picture>
+
 ## Step 1: Audit Prerequisites and Launch AX Central
 
 From the `ax-central` repository root, run the prerequisite doctor:
@@ -41,15 +46,20 @@ make wails-build && open "build/bin/AX Central.app"
 ## Step 2: Start the Local Stack in Clusters (`⌘5`)
 
 1. Click **Clusters** in the left sidebar (or press **`⌘5`**).
-2. Inspect the **Environment & Prerequisites Doctor** card at the top of the page. If any dependency needs repair, click **Bootstrap All** (or the individual **Fix** button) to stream the build in the bottom console.
+2. Inspect the **Prerequisite Doctor** card on the right. If any dependency needs repair, click **Bootstrap All** (or the individual **Fix** button) to stream the build in the bottom console.
 3. Locate the **Apple Container (`ate-local`)** stack card:
    * If the status badge reads **Stopped**, click **Start**.
    * The bottom **Output** console opens and streams `examples/ate_local/local-stack.sh up`.
    * In about 3.3 seconds, all three layers report green (**Ready**):
-     * **AX** (`ax-server` listening on `127.0.0.1:8090`)
+     * **AX Control Plane** (`ax-server` listening on `127.0.0.1:8090`)
      * **ate-local Substrate** (`ate-local` gRPC server listening on `127.0.0.1:50051`)
-     * **Apple Container** (`ax-local-postgres` on `127.0.0.1:5432` and active `ate-*` microVMs)
+     * **Apple Container & PostgreSQL** (`ax-local-postgres` on `127.0.0.1:5432` and active `ate-*` microVMs)
 4. Click **Open in Central** on the card. AX Central sets the active context in the top toolbar to **`local`** and routes `ax` CLI commands to `localhost:8090` using `<repoPath>/.ax-local/bin/ax`.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../screenshots/clusters-dark.webp">
+  <img alt="AX Central Clusters view showing Apple Container ate-local stack and Prerequisite Doctor" src="../screenshots/clusters-light.webp">
+</picture>
 
 ---
 
@@ -70,6 +80,11 @@ make wails-build && open "build/bin/AX Central.app"
    * Toggle **Edit raw** in the YAML header to inspect the raw manifest editor with its synchronized line-number gutter, then toggle back to the visual editor.
 4. Click **Create** (or press **`⌘↩`**). The footer status bar confirms `task.ax.io/local-task-... created`.
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../screenshots/designer-dark.webp">
+  <img alt="AX Central Deploy view with visual form, composition diagram, and YAML preview" src="../screenshots/designer-light.webp">
+</picture>
+
 ---
 
 ## Step 4: Resume the Task and Stream Logs in Activity (`⌘1`)
@@ -84,13 +99,23 @@ make wails-build && open "build/bin/AX Central.app"
    * **Sandbox fields**: Displays `Image: debian:12`, `Workspace: my-workspace -> /workspace`, `Worker IP: 192.168.64.x`, `Actor`, and `Debug: on`.
    * **Logs (`<ax-task-logs>`)**: Streams live container output via `container logs -f ate-default-local-task-...`. Click the maximize icon in the logs footer to open the full-screen log modal, and press `Esc` to close it.
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../screenshots/activity-dark.webp">
+  <img alt="AX Central Activity view with Task Inspector and streaming guest logs" src="../screenshots/activity-light.webp">
+</picture>
+
 ---
 
 ## Step 5: Explore the Resource Graph in Map (`⌘2`)
 
 1. Click **Map** in the sidebar (or press **`⌘2`**).
 2. The SVG Bezier graph illustrates how repository, file, and MCP server sources feed into `my-workspace`, and how `my-workspace` mounts into `local-task-...`.
-3. Use the zoom controls (`+`, `-`, `100%`) in the top-right corner of the canvas, or click any task card in the graph to inspect it.
+3. Use the zoom controls in the top-right corner of the canvas, or click any task card in the graph to inspect it.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../screenshots/topology-dark.webp">
+  <img alt="AX Central Map view showing sources, workspaces, and tasks" src="../screenshots/topology-light.webp">
+</picture>
 
 ---
 
@@ -103,12 +128,22 @@ make wails-build && open "build/bin/AX Central.app"
    * Click **New session** to open a second parallel tab to the same task.
    * Click **Open in Ghostty** to launch a native `/Applications/Ghostty.app` window connected to the task over `ax ssh`, or click **Copy ax ssh** to copy the standalone terminal command.
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../screenshots/terminal-dark.webp">
+  <img alt="AX Central Terminal view connected over ax ssh" src="../screenshots/terminal-light.webp">
+</picture>
+
 ---
 
 ## Step 7: Call AX Tools via WebMCP (`⌘I`)
 
 1. Click the **`WebMCP: in-app registry`** (or **`WebMCP: document.modelContext`**) badge in the top toolbar (or press **`⌘I`**).
 2. The **WebMCP Inspector** drawer opens on the right:
-   * **Tools tab**: Lists all 17 registered tools across **Tasks**, **Workspaces & Scope**, and **Deploy & Clusters** (`list_tasks`, `get_task`, `select_task`, `suspend_task`, `resume_task`, `delete_task`, `list_workspaces`, `delete_workspace`, `list_contexts`, `switch_scope`, `load_template`, `get_draft_manifest`, `apply_manifest`, `list_clusters`, `manage_local_stack`, `check_prerequisites`).
-   * **Run tab**: Select `list_tasks` or `check_prerequisites` and click **Call** to execute the tool and inspect its JSON output and latency in the **Calls** log.
+   * **Tool calls**: Displays live invocations, caller identity, arguments, and execution latency.
+   * **Run a tool by hand**: Select `list_tasks` or `check_prerequisites` and click **Run tool** to execute the tool and inspect its JSON output.
 3. When you finish testing, suspend or delete the task from **Activity** (or via `delete_task` in WebMCP), and click **Stop** on the Apple Container card in **Clusters** (`⌘5`) to shut down the local stack.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../screenshots/webmcp-dark.webp">
+  <img alt="AX Central WebMCP Inspector drawer" src="../screenshots/webmcp-light.webp">
+</picture>

@@ -1,0 +1,28 @@
+// Task and workspace lifecycle across Deploy, Activity, Logs, and Terminal.
+digraph task_lifecycle {
+  label = "AX Central · task lifecycle";
+  rankdir = LR;
+  ranksep = 0.58;
+  nodesep = 0.42;
+
+  init      [class="dot"];
+  designer  [label="Deploy", class="primary"];
+  suspended [label="Suspended", class="emphasis"];
+  running   [label="Running", class="positive"];
+  ssh       [label="Terminal", class="terminal"];
+  logs      [label="Live logs", class="muted"];
+  completed [label="Completed", class="positive"];
+  failed    [label="Failed", class="error"];
+  end       [class="final"];
+
+  init -> designer;
+  designer -> suspended  [label="ax apply", class="primary code"];
+  suspended -> running   [label="ax resume", class="positive code"];
+  running -> suspended   [label="ax suspend", class="weak code", constraint=false];
+  running -> ssh         [label="ax ssh", class="async code"];
+  running -> logs        [label="container logs -f", class="muted code"];
+  running -> completed   [label="exit 0", class="positive"];
+  running -> failed      [label="error", class="error"];
+  completed -> end;
+  failed -> end;
+}
