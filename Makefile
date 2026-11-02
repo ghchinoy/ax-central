@@ -41,8 +41,10 @@ help:
 frontend/node_modules:
 	cd frontend && npm install
 
-build: frontend/node_modules
+frontend/dist: frontend/node_modules
 	cd frontend && npm run build
+
+build: frontend/dist
 	go build -ldflags "$(LDFLAGS)" -o ax-central .
 
 wails-build: frontend/node_modules
@@ -64,13 +66,13 @@ run-frontend: frontend/node_modules
 
 test: test-go test-frontend
 
-test-go:
+test-go: frontend/dist
 	go vet . && go test -race -count=1 .
 
 test-frontend: frontend/node_modules
 	cd frontend && npm test
 
-lint: frontend/node_modules
+lint: frontend/dist
 	@test -z "$$(gofmt -s -l .)" || { gofmt -s -l .; exit 1; }
 	go vet .
 	GOOS=linux GOARCH=amd64 go vet .
