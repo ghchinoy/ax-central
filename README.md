@@ -5,9 +5,9 @@
 [![Go](https://img.shields.io/badge/Go-1.25+-00ADD8.svg)](go.mod)
 [![WebMCP](https://img.shields.io/badge/WebMCP-document.modelContext-188038.svg)](docs/reference/cli-and-webmcp-tools.md)
 
-A native macOS desktop control plane for [AX](https://github.com/google/ax) and [Agent Substrate](https://github.com/agent-substrate/substrate) that lets you design tasks, watch them run, stream container and Kubernetes logs, open interactive `ax ssh` terminals, manage local Apple `container` (`ate-local`) stacks and `kind` clusters, and expose 16 AX operations as WebMCP (`document.modelContext`) tools.
+A cross-platform desktop control plane (macOS, Linux, and Windows) for [AX](https://github.com/google/ax) and [Agent Substrate](https://github.com/agent-substrate/substrate) that lets you design tasks, watch them run, stream container and Kubernetes logs, open interactive `ax ssh` terminals, manage local Apple `container` (`ate-local`) stacks and `kind` clusters, and expose 16 AX operations as WebMCP (`document.modelContext`) tools.
 
-Built with [Wails v2](https://wails.io/) (Go) and [Lit 3](https://lit.dev/) WebComponents (TypeScript, Luminous 0.15–0.19 design tokens).
+Built with [Wails v2](https://wails.io/) (Go) and [Lit 3](https://lit.dev/) WebComponents (TypeScript, Luminous 0.15–0.19 design tokens). Inspired by [@rakyll](https://github.com/rakyll)'s proposal in [google/ax#543](https://github.com/google/ax/issues/543) and prototype at [rakyll/ax-studio](https://github.com/rakyll/ax-studio), and developed as Track 4 of the [AX Experiments](https://github.com/ghchinoy/ax-experiments) suite.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/activity-dark.webp">
@@ -29,7 +29,7 @@ Built with [Wails v2](https://wails.io/) (Go) and [Lit 3](https://lit.dev/) WebC
 
 ## Install
 
-Clone the repository, audit prerequisites with `make doctor`, and build the native macOS `.app` bundle:
+Download a prebuilt archive for **macOS** (`darwin-universal`), **Linux** (`linux-amd64`), or **Windows** (`windows-amd64`) from [GitHub Releases](https://github.com/ghchinoy/ax-central/releases), or build from source:
 
 ```bash
 git clone https://github.com/ghchinoy/ax-central.git
@@ -41,7 +41,7 @@ make doctor
 # Automatically clone/build any missing Tier-A (ate-local & ax-experiments) prerequisites
 make bootstrap
 
-# Build and launch the native macOS application bundle
+# Build and launch the native desktop application bundle
 make wails-build && open "build/bin/AX Central.app"
 ```
 
@@ -111,10 +111,10 @@ Full documentation lives under [`docs/`](docs/index.md), organized into the four
 ## Local Development Setup
 
 ### Prerequisites
-* **macOS** (`darwin/arm64` recommended for Apple `container` microVMs)
+* **OS**: macOS (`darwin/arm64` or `darwin/amd64`), Linux (`linux/amd64` with `libgtk-3-dev` and `libwebkit2gtk-4.1-dev`), or Windows (`windows/amd64` with WebView2)
 * **Go** `1.25+` and **Wails CLI** `v2.13+` (`go install github.com/wailsapp/wails/v2/cmd/wails@latest`)
 * **Node.js** `22.23.4+` and `npm`
-* **Apple `container` CLI** (`/usr/local/bin/container`, `brew install --cask container && container system start`) for Tier-A local stack, or **Podman / Docker + `kind` + `kubectl`** for Tier-B Kubernetes clusters
+* **Compute substrate**: **Apple `container` CLI** (`/usr/local/bin/container`, `brew install --cask container && container system start`) on Apple Silicon macOS for the Tier-A local stack, or **Podman / Docker + `kind` + `kubectl`** across macOS, Linux, and Windows for Tier-B Kubernetes clusters
 * **Optional (diagrams & screenshots)**: `graphviz` (`dot`, `gvpr`) and `webp` (`cwebp`) via `brew install graphviz webp`
 
 ### Development Commands
@@ -147,7 +147,7 @@ make release-darwin
 #   dist/SHA256SUMS
 ```
 
-Pushing a `v*` tag triggers [`.github/workflows/release.yml`](.github/workflows/release.yml) to run `make lint && make test`, build the universal macOS bundle, and attach the `.zip` and `SHA256SUMS` artifacts to the GitHub Release.
+Pushing a `v*` tag (or merging a `release-please` PR) triggers [`.github/workflows/release.yml`](.github/workflows/release.yml) to run `make lint && make test`, build the **macOS Universal** (`darwin-universal.zip`), **Linux** (`linux-amd64.tar.gz`), and **Windows** (`windows-amd64.zip`) binaries, and attach all archives and `SHA256SUMS` files to the GitHub Release.
 
 ## Troubleshooting
 

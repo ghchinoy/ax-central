@@ -1,6 +1,8 @@
 # AX Central Documentation
 
-Welcome to the documentation for **AX Central**, a native macOS desktop control plane for [AX](https://github.com/google/ax) and [Agent Substrate](https://github.com/agent-substrate/substrate).
+Welcome to the documentation for **AX Central**, a cross-platform desktop control plane (macOS, Linux, and Windows) for [AX](https://github.com/google/ax) and [Agent Substrate](https://github.com/agent-substrate/substrate).
+
+AX Central is inspired by [@rakyll](https://github.com/rakyll)'s proposal in [google/ax#543](https://github.com/google/ax/issues/543) and prototype at [rakyll/ax-studio](https://github.com/rakyll/ax-studio), and is developed as part of the [AX Experiments](https://github.com/ghchinoy/ax-experiments) suite.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="screenshots/activity-dark.webp">

@@ -1,6 +1,6 @@
 # Explanation: System Architecture and Dual-Substrate Design
 
-AX Central is a native desktop control plane built with **Wails v2** (Go) and **Lit 3 WebComponents** (TypeScript, Luminous 0.15–0.19 design tokens). It connects a single declarative task designer and observability UI to two interchangeable compute substrates: **Apple `container` (`ate-local`)** on macOS and **Agent Substrate on Kubernetes (`kind`)**.
+AX Central is a cross-platform desktop control plane (macOS, Linux, and Windows) built with **Wails v2** (Go) and **Lit 3 WebComponents** (TypeScript, Luminous 0.15–0.19 design tokens). Inspired by [@rakyll](https://github.com/rakyll)'s proposal in [google/ax#543](https://github.com/google/ax/issues/543) and prototype at [rakyll/ax-studio](https://github.com/rakyll/ax-studio), and developed within the [AX Experiments](https://github.com/ghchinoy/ax-experiments) repository, it connects a single declarative task designer and observability UI to two interchangeable compute substrates: **Apple `container` (`ate-local`)** on macOS and **Agent Substrate on Kubernetes (`kind`)** across macOS, Linux, and Windows.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="../diagrams/01-architecture-dark.webp">

@@ -73,6 +73,8 @@ test-frontend: frontend/node_modules
 lint: frontend/node_modules
 	@test -z "$$(gofmt -s -l .)" || { gofmt -s -l .; exit 1; }
 	go vet .
+	GOOS=linux GOARCH=amd64 go vet .
+	GOOS=windows GOARCH=amd64 go vet .
 	@if command -v golangci-lint >/dev/null 2>&1; then golangci-lint run .; fi
 	bash -n hack/*.sh docker-shim.sh
 	cd frontend && npm run lint

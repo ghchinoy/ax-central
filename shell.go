@@ -29,7 +29,6 @@ import (
 	"runtime"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 )
 
@@ -296,9 +295,7 @@ func (s *Shell) Stream(req StreamRequest, onLine func(string), onExit func(int))
 		cmd.Dir = ExpandPath(req.Cwd)
 	}
 	cmd.Env = s.mergeEnv(req.Env)
-	if runtime.GOOS != "windows" {
-		cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-	}
+	setProcessGroup(cmd)
 
 	stdoutPipe, errOut := cmd.StdoutPipe()
 	stderrPipe, errErr := cmd.StderrPipe()
@@ -374,23 +371,7 @@ func (s *Shell) Cancel(id string) {
 	if cmd == nil || cmd.Process == nil {
 		return
 	}
-	pid := cmd.Process.Pid
-	if runtime.GOOS != "windows" {
-		_ = syscall.Kill(-pid, syscall.SIGINT)
-		_ = syscall.Kill(-pid, syscall.SIGTERM)
-		go func() {
-			time.Sleep(100 * time.Millisecond)
-			s.mu.Lock()
-			stillRunning := s.streams[id] == cmd
-			s.mu.Unlock()
-			if stillRunning {
-				_ = syscall.Kill(-pid, syscall.SIGKILL)
-			}
-		}()
-		return
-	}
-	_ = cmd.Process.Signal(os.Interrupt)
-	_ = cmd.Process.Kill()
+	s.terminateStreamProcess(id, cmd)
 }
 
 // StartSession starts an interactive program with piped stdio and streams raw chunks.
