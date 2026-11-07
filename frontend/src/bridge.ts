@@ -290,7 +290,53 @@ export function createFallbackStudio(
               id: req.id,
               line: 'time=2026-11-01T12:00:01Z level=INFO msg="starting guest runner"',
             });
+            cb({
+              id: req.id,
+              line: 'time=2026-11-01T12:00:02Z level=INFO msg="genkit otel span" agent=triage_agent span=triage_agent type=action subtype=flow status=success duration_ms=42.50 start_unix_nano=1794022923000000000 end_unix_nano=1794022923042500000 trace_id=4ff8c58f13d6b4dff65b657638b245bb span_id=848dd100f712d9e4',
+            });
             cb({ id: req.id, line: "Linux aarch64" });
+          }
+        } else if (req.commandLine.includes("ate.dev/worker-pool")) {
+          for (const cb of lineListeners) {
+            cb({
+              id: req.id,
+              line: JSON.stringify({
+                labels: {
+                  "ate.actor.name": "gemini-a1b2c3",
+                  "ate.atespace": "default",
+                },
+                message: "Actor started",
+                time: "2026-11-01T12:00:01Z",
+                trace_id: "4ff8c58f13d6b4dff65b657638b245bb",
+                span_id: "848dd100f712d9e4",
+              }),
+            });
+            cb({
+              id: req.id,
+              line: JSON.stringify({
+                msg: "Actor usage sampled",
+                "ate.atespace": "default",
+                "ate.actor.name": "gemini-a1b2c3",
+                "ate.stats.kind": "initial",
+                "ate.stats.memory.working_set": 25165824,
+                "ate.stats.memory.peak": 31457280,
+                "ate.stats.cpu.time": 0.42,
+                trace_id: "4ff8c58f13d6b4dff65b657638b245bb",
+              }),
+            });
+            cb({
+              id: req.id,
+              line: JSON.stringify({
+                labels: {
+                  "ate.actor.container.name": "guest",
+                  "ate.actor.name": "gemini-a1b2c3",
+                  "ate.atespace": "default",
+                },
+                message:
+                  'time=2026-11-01T12:00:02Z level=INFO msg="genkit otel span" agent=triage_agent span=read_file type=action subtype=tool status=success duration_ms=12.40 start_unix_nano=1794022923010000000 end_unix_nano=1794022923022400000 trace_id=4ff8c58f13d6b4dff65b657638b245bb span_id=1122334455667788',
+                time: "2026-11-01T12:00:02Z",
+              }),
+            });
           }
         } else {
           for (const cb of lineListeners) {

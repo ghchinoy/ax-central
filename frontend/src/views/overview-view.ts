@@ -379,7 +379,7 @@ export class AxTaskInspector extends LitElement {
                     }
 
                     <section class="inspector-section">
-                      <h4>Logs</h4>
+                      <h4>Logs &amp; Telemetry</h4>
                       <ax-task-logs .task=${t}></ax-task-logs>
                     </section>
 

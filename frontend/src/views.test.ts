@@ -46,6 +46,7 @@ import {
   type RegisteredTool,
 } from "./registry";
 import { store } from "./model/store";
+import { parseJaegerTraceJSON, parseSlogFields } from "./views/task-logs";
 
 beforeEach(() => {
   window.studio = createFallbackStudio();
@@ -402,6 +403,58 @@ describe("WebMCP ToolHost & AX tools", () => {
       ...logsEl.shadowRoot!.querySelectorAll(".task-log-line"),
     ].map((n) => n.textContent);
     expect(taskLogLines).toContain("Linux aarch64");
+
+    // Verify Genkit OTel span & trace pill parsing in <ax-task-logs>
+    const tracePill =
+      logsEl.shadowRoot!.querySelector<HTMLButtonElement>(".trace-pill")!;
+    expect(tracePill).not.toBeNull();
+    tracePill.click();
+    await (logsEl as unknown as { updateComplete: Promise<boolean> })
+      .updateComplete;
+    expect(logsEl.shadowRoot!.querySelector(".waterfall")).not.toBeNull();
+    expect(logsEl.shadowRoot!.querySelector(".wf-name")?.textContent).toContain(
+      "triage_agent",
+    );
+
+    const parsedFields = parseSlogFields(
+      'time=2026-11-07T00:00:00Z level=INFO msg="genkit otel span" agent=coder_agent span="read_file" duration_ms=14.2',
+    );
+    expect(parsedFields.msg).toBe("genkit otel span");
+    expect(parsedFields.agent).toBe("coder_agent");
+    expect(parsedFields.span).toBe("read_file");
+
+    const jaegerSpans = parseJaegerTraceJSON(
+      JSON.stringify({
+        result: {
+          resourceSpans: [
+            {
+              resource: {
+                attributes: [
+                  { key: "service.name", value: { stringValue: "ateapi" } },
+                ],
+              },
+              scopeSpans: [
+                {
+                  spans: [
+                    {
+                      traceId: "4ff8c58f13d6b4dff65b657638b245bb",
+                      spanId: "7556ad21e32ec61e",
+                      name: "substrate.ateapi.v1.Control/ResumeActor",
+                      startTimeUnixNano: "1794022923186000000",
+                      endTimeUnixNano: "1794022923522000000",
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      }),
+      "4ff8c58f13d6b4dff65b657638b245bb",
+    );
+    expect(jaegerSpans).toHaveLength(1);
+    expect(jaegerSpans[0]?.service).toBe("ateapi");
+    expect(jaegerSpans[0]?.durationMs).toBeCloseTo(336, 0);
 
     // Verify Resume All (N) and Suspend All (N) bulk action buttons in Activity (ax-central-4dd)
     store.set({
