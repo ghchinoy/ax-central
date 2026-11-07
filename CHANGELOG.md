@@ -6,6 +6,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and [Common Changelog](https://common-changelog.org/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2026-11-06
+
+### Added
+- **Chromebook / Crostini & Kind (`v1.0.0-rc.1`) Auto-Discovery:** `store.ts` and `shell.go` automatically discover `~/projects/ax/.tmp/bin/ax`, `~/projects/ax/bin/ax`, and running `kind-*` clusters with `~/projects/ax/.tmp/kubeconfig-<cluster>` without requiring manual `kind export kubeconfig`, and propagate `KUBECONFIG` across `ax` commands, `<ax-task-logs>` streams, and interactive `<ax-terminal>` (`ax ssh`) sessions (`[ax_central-l85.1]`, `[ax_central-l85.2]`).
+- **Live Crostini E2E Smoke Suite (`make smoke-crostini`):** Added `hack/smoke-crostini.sh` and `TestLiveCrostiniKindClusterE2E` in `shell_test.go` to verify Workspace and Task creation, `gVisor` (`runsc`) sandbox resume, `ax ssh` interactive execution over `atenet-router` mTLS, and RustFS snapshot suspend on `kind-ax-e2e` (`[ax_central-l85.4]`).
+- **OS-Aware Prerequisite Doctor & Substrate Image Caching:** `hack/doctor.sh` and `clusters.ts` detect Linux/Crostini environments (`hack/setup-e2e-kind.sh` and `crostini/setup-crostini.sh`), and `clusters.ts` sets `SUBSTRATE_IMAGE_CACHE_DIR` during cluster provisioning to reuse cached Agent Substrate images (`[ax_central-l85.3]`).
+- **Bulk Task Lifecycle Actions & 3-OS Release Matrix:** Added `Resume All (N)` and `Suspend All (N)` bulk controls in `<ax-overview>`, cross-OS process-group helpers (`proc_unix.go`, `proc_windows.go`), and 3-OS GitHub Actions release builds (`darwin-universal`, `linux-amd64`, `windows-amd64`) (`[ax-central-4dd]`).
+
+### Changed
+- **Toolchain & Dependency Refresh:** Upgraded Go to `1.26.0`, `github.com/wailsapp/wails/v2` to `v2.17.1`, `typescript` to `~7.0.2`, `@xterm/xterm` to `^6.0.0`, `@xterm/addon-fit` to `^0.11.0`, `yaml` to `^2.9.1`, `vite` to `^8.3.6`, `vitest` and `@vitest/browser-playwright` to `^5.1.0`, and `playwright` to `^1.65.0` (`[ax_central-fqz.3]`).
+- **Session Process Groups & Bounded Tool Log:** Interactive sessions in `shell.go` now run in dedicated process groups terminated cleanly on `CloseSession()`, and `<ax-central>` caps `toolLog` history to 200 entries (`[ax_central-fqz.4]`).
+
+### Fixed
+- **Cross-Platform Headless Chromium Discovery:** `frontend/vitest.config.ts` and `hack/screenshots.mjs` now discover Playwright's headless Chromium cache across both macOS (`~/Library/Caches/ms-playwright`) and Linux (`~/.cache/ms-playwright`) (`[ax_central-fqz.4]`).
+- **Guest Log Actor Matching on Agent Substrate 1.0:** `<ax-task-logs>` matches guest container log records by `ate.actor.name` (`t.name` or `t.actor`) and `ate.template.name` (`${t.name}-tmpl-*`) and styles `runsc` glog lines (`[ax_central-l85.2]`).
+
+### Security
+- **Shell & CLI Boundary Hardening:** Replaced double-quoted `t.phase` interpolation in `<ax-task-logs>` with single-quoted `printf` arguments, enforced `NAME_RE` and shell-quoted temporary kubeconfig paths in `clusters.ts`, and validated resource/context identifiers with `isSafeResourceName()` in `store.ts` before invoking `ax` (`[ax_central-fqz.1]`).
+- **User-Scoped Runtime Directories & Webview CSP:** Moved `Shell.KubeconfigFor()` files and `docker-shim.sh` buildx digests out of shared `/tmp` into `0700` user-scoped directories, added a `<meta http-equiv="Content-Security-Policy">` policy to `frontend/index.html`, and added path-traversal containment to `hack/screenshots.mjs` (`[ax_central-fqz.2]`).
+
 ## [0.1.0] - 2026-11-01
 
 _Initial release._
@@ -27,4 +47,5 @@ _Initial release._
 ### Security
 - **WebMCP Argument-Injection & STDIO MCP Guards:** Enforced `reqSafeName` validation across all WebMCP tool inputs to reject leading `-` CLI flags, added `mcp-auditor` warnings for shell wrappers in Workspace STDIO MCP servers, and added `make security` (`npm audit` + Go readability checks) (`[ax-central-hw9]`).
 
+[0.2.0]: https://github.com/ghchinoy/ax-central/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/ghchinoy/ax-central/releases/tag/v0.1.0

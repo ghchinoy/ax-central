@@ -19,6 +19,7 @@ This reference documents AX Central's `Makefile` targets, `hack/doctor.sh` CLI f
 | `make doctor` | Runs `bash hack/doctor.sh` to audit Tier-A (`ate-local`) and Tier-B (`kind`) prerequisites. |
 | `make bootstrap` | Runs `bash hack/doctor.sh --install all` to clone/build missing Tier-A prerequisites. |
 | `make smoke-local` | Runs `bash hack/smoke-local.sh` to verify a live `debian:12` task lifecycle on the local Apple `container` stack. |
+| `make smoke-crostini` | Runs `bash hack/smoke-crostini.sh` to verify a live Workspace + Task lifecycle (`apply`, `resume`, `ax ssh`, `suspend`) on a local `kind` + Agent Substrate (`gVisor`) cluster. |
 | `make diagrams` | Renders `docs/diagrams/*.dot` to `*-{light,dark}.webp` via `gvpr` (`../graphviz-style/theme/luminous.gvpr`) and `dot -Twebp`. |
 | `make screenshots` | Runs `node hack/screenshots.mjs` to capture `1440×900` (`2x`) light and dark WebP screenshots in `docs/screenshots/`. |
 | `make format` | Formats Go (`gofmt -s -w .`) and frontend TypeScript/CSS (`prettier --write .`). |

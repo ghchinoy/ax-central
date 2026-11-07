@@ -1,8 +1,8 @@
 # AX Central
 
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-0.1.0-0b57d0.svg)](CHANGELOG.md)
-[![Go](https://img.shields.io/badge/Go-1.25+-00ADD8.svg)](go.mod)
+[![Version](https://img.shields.io/badge/version-0.2.0-0b57d0.svg)](CHANGELOG.md)
+[![Go](https://img.shields.io/badge/Go-1.26+-00ADD8.svg)](go.mod)
 [![WebMCP](https://img.shields.io/badge/WebMCP-document.modelContext-188038.svg)](docs/reference/cli-and-webmcp-tools.md)
 
 A cross-platform desktop control plane (macOS, Linux, and Windows) for [AX](https://github.com/google/ax) and [Agent Substrate](https://github.com/agent-substrate/substrate) that lets you design tasks, watch them run, stream container and Kubernetes logs, open interactive `ax ssh` terminals, manage local Apple `container` (`ate-local`) stacks and `kind` clusters, and expose 16 AX operations as WebMCP (`document.modelContext`) tools.
@@ -50,9 +50,15 @@ make wails-build && open "build/bin/AX Central.app"
 Run a full end-to-end `debian:12` microVM task on the local Apple `container` (`ate-local`) stack from the CLI or UI in under 10 seconds:
 
 ```bash
-# Headless CLI smoke test: starts ate-local (:50051) + ax-server (:8090),
-# applies a debian:12 task, resumes the microVM, runs `ax ssh -- uname -sm`, and cleans up
+# Headless CLI smoke test on macOS Apple container (ate-local):
+# starts ate-local (:50051) + ax-server (:8090), applies a debian:12 task,
+# resumes the microVM, runs `ax ssh -- uname -sm`, and cleans up
 make smoke-local
+
+# Headless CLI smoke test on Linux / Crostini Kind + Agent Substrate (gVisor):
+# applies a Workspace + Task on kind-ax-e2e, resumes the gVisor sandbox,
+# runs `ax ssh`, checkpoints to RustFS on suspend, and cleans up
+make smoke-crostini
 ```
 
 Inside **AX Central.app**:

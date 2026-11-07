@@ -62,7 +62,7 @@ When `kind`, `kubectl`, and either `docker` or `podman` are installed, the **New
 2. Optionally specify a **Substrate** git ref (defaults to the `go.ate.dev/substrate` version in `<repoPath>/go.mod`).
 3. Click **Create cluster**. AX Central tracks progress across four stages:
    * `Kind cluster` $\rightarrow$ `Agent Substrate` $\rightarrow$ `Worker pool` $\rightarrow$ `AX control plane`.
-4. When creation finishes, AX Central merges `kind-<name>` into `~/.kube/config` without altering your global default context. Click **Open in Central** on the cluster card to target it.
+4. When creation finishes, AX Central merges `kind-<name>` into `~/.kube/config` without altering your global default context. Click **Open in Central** on the cluster card to target it. AX Central also auto-discovers clusters provisioned via `hack/setup-e2e-kind.sh` or `~/projects/ax-experiments/crostini/setup-crostini.sh` (`<repoPath>/.tmp/kubeconfig-<name>`) and caches Agent Substrate images in `~/.cache/substrate-registry`.
 
 ### Using Podman Without Docker Desktop (`docker-shim.sh`)
 
