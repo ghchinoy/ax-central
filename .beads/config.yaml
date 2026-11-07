@@ -73,4 +73,3 @@
 
 sync:
     remote: "git+https://github.com/ghchinoy/ax-central.git"
-
