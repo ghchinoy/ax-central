@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and [Common Changelog](https://common-changelog.org/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0](https://github.com/ghchinoy/ax-central/compare/v0.1.0...v0.2.0) (2026-11-07)
+
+
+### Features
+
+* **crostini:** auto-discover Kind .tmp/kubeconfig-* & ax binaries and add live Crostini E2E smoke test (ax_central-l85) ([c590bc4](https://github.com/ghchinoy/ax-central/commit/c590bc4c480820d96423e9f25189624aaf11b05c))
+
 ## [0.1.0] - 2026-11-01
 
 _Initial release._
