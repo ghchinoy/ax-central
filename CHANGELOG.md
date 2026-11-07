@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and [Common Changelog](https://common-changelog.org/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0](https://github.com/ghchinoy/ax-central/compare/v0.2.0...v0.3.0) (2026-11-07)
+
+
+### Features
+
+* **linux,docs:** auto-configure Wails webkit2_41 in Makefile/doctor.sh and add Crostini tutorial walkthrough (ax_central-xkx, ax_central-7bg) ([70cb6f3](https://github.com/ghchinoy/ax-central/commit/70cb6f32f8f96fdeb30147a48d5ab0dc01c84588))
+* **observability:** add multi-layer task log filters, cgroup/checkpoint telemetry, and OTel trace waterfall (ax_central-qbp) ([48e9270](https://github.com/ghchinoy/ax-central/commit/48e92703775e4a9922b98e136ff6c1f66fcd11df))
+
+
+### Bug Fixes
+
+* **ui:** make inline trace-pill compact and prevent inherited pre-wrap expansion ([905f214](https://github.com/ghchinoy/ax-central/commit/905f214c3d1bfe0eef59b71519b8bd39108a3538))
+
 ## [0.2.0] - 2026-11-06
 
 ### Added
