@@ -90,6 +90,8 @@ export interface State {
   axVersion: string | null;
   axConfig: boolean;
   localAxBin: string | null;
+  repoAxBin: string | null;
+  kindKubeconfigs: Record<string, string>;
   terminalTabs: TerminalTab[];
   terminalActive: string | null;
   settings: Settings;
@@ -154,6 +156,8 @@ export class Store extends EventTarget {
     axVersion: null,
     axConfig: true,
     localAxBin: null,
+    repoAxBin: null,
+    kindKubeconfigs: {},
     terminalTabs: [],
     terminalActive: null,
     settings: loadSettings(),
@@ -253,8 +257,22 @@ export class Store extends EventTarget {
     const info = await window.studio.platform();
     const repoExpanded = this.state.settings.repoPath.replace(/^~/, info.home);
     const candidateLocalAx = `${repoExpanded}/.ax-local/bin/ax`;
-    const hasLocalAx = await window.studio.fileExists(candidateLocalAx);
-    this.set({ localAxBin: hasLocalAx ? candidateLocalAx : null });
+    const candidateTmpAx = `${repoExpanded}/.tmp/bin/ax`;
+    const candidateRepoBinAx = `${repoExpanded}/bin/ax`;
+    const [hasLocalAx, hasTmpAx, hasRepoBinAx] = await Promise.all([
+      window.studio.fileExists(candidateLocalAx),
+      window.studio.fileExists(candidateTmpAx),
+      window.studio.fileExists(candidateRepoBinAx),
+    ]);
+    const repoAxBin = hasTmpAx
+      ? candidateTmpAx
+      : hasRepoBinAx
+        ? candidateRepoBinAx
+        : null;
+    this.set({
+      localAxBin: hasLocalAx ? candidateLocalAx : null,
+      repoAxBin,
+    });
 
     const v = result(
       await window.studio.run({
@@ -270,43 +288,53 @@ export class Store extends EventTarget {
       }),
     );
     let contexts: AXContext[];
+    let kindKubeconfigs: Record<string, string> = {};
     if (r.ok) {
       contexts = parseContexts(r.stdout);
       this.set({ axConfig: true });
     } else if (/unknown command/i.test(r.stderr + r.stdout)) {
-      contexts = await kubeContexts();
-      this.set({ axConfig: false });
+      const kc = await kubeContexts(repoExpanded);
+      contexts = kc.contexts;
+      kindKubeconfigs = kc.kindKubeconfigs;
+      this.set({ axConfig: false, kindKubeconfigs });
     } else {
-      contexts = [];
+      const kc = await kubeContexts(repoExpanded);
+      contexts = kc.contexts;
+      kindKubeconfigs = kc.kindKubeconfigs;
+      this.set({ kindKubeconfigs });
     }
     if (!contexts.some((c) => c.name === "local")) {
-      contexts = [
-        {
-          name: "local",
-          description: `Local Apple container (ate-local · ${this.state.settings.localServer})`,
-          isCurrent: contexts.length === 0,
-        },
-        ...contexts,
-      ];
+      const localCtx: AXContext = {
+        name: "local",
+        description: `Local Apple container (ate-local · ${this.state.settings.localServer})`,
+        isCurrent: contexts.length === 0 && info.os === "darwin",
+      };
+      contexts =
+        info.os === "darwin"
+          ? [localCtx, ...contexts]
+          : [...contexts, localCtx];
     }
     const asked = new URLSearchParams(location.search).get("context");
+    const defaultCtx =
+      contexts.find((c) => c.isCurrent)?.name ||
+      (info.os !== "darwin"
+        ? contexts.find((c) => c.name !== "local")?.name
+        : undefined) ||
+      "local";
     this.set({
       contexts,
-      context:
-        this.state.context ||
-        asked ||
-        contexts.find((c) => c.isCurrent)?.name ||
-        "local",
+      context: this.state.context || asked || defaultCtx,
     });
   }
 
   get effectiveAxPath(): string {
-    if (
-      this.state.context === "local" &&
-      this.state.settings.axPath === "ax" &&
-      this.state.localAxBin
-    ) {
-      return this.state.localAxBin;
+    if (this.state.settings.axPath === "ax") {
+      if (this.state.context === "local" && this.state.localAxBin) {
+        return this.state.localAxBin;
+      }
+      if (this.state.repoAxBin) {
+        return this.state.repoAxBin;
+      }
     }
     return this.state.settings.axPath;
   }
@@ -329,6 +357,10 @@ export class Store extends EventTarget {
   get envForContext(): Record<string, string> | undefined {
     if (this.state.context === "local") {
       return { AX_SERVER: this.state.settings.localServer || "localhost:8090" };
+    }
+    const kc = this.state.kindKubeconfigs[this.state.context];
+    if (kc) {
+      return { KUBECONFIG: kc };
     }
     return undefined;
   }
@@ -587,8 +619,11 @@ function same(a: AXTask[], b: AXTask[]): boolean {
   );
 }
 
-async function kubeContexts(): Promise<AXContext[]> {
-  const [names, current] = await Promise.all([
+async function kubeContexts(repoExpanded: string): Promise<{
+  contexts: AXContext[];
+  kindKubeconfigs: Record<string, string>;
+}> {
+  const [names, current, kindClusters] = await Promise.all([
     window.studio.run({
       program: "kubectl",
       args: ["config", "get-contexts", "-o", "name"],
@@ -597,19 +632,53 @@ async function kubeContexts(): Promise<AXContext[]> {
       program: "kubectl",
       args: ["config", "current-context"],
     }),
+    window.studio.run({
+      program: "kind",
+      args: ["get", "clusters"],
+    }),
   ]);
   const cur = result(current).ok ? result(current).stdout.trim() : "";
   const r = result(names);
-  if (!r.ok) return [];
-  return r.stdout
-    .split("\n")
-    .map((n) => n.trim())
-    .filter(Boolean)
-    .map((name) => ({
-      name,
-      description: "Kubernetes context",
-      isCurrent: name === cur,
-    }));
+  const seen = new Set<string>();
+  const contexts: AXContext[] = [];
+  if (r.ok) {
+    for (const raw of r.stdout.split("\n")) {
+      const name = raw.trim();
+      if (!name || seen.has(name)) continue;
+      seen.add(name);
+      contexts.push({
+        name,
+        description: "Kubernetes context",
+        isCurrent: name === cur,
+      });
+    }
+  }
+  const kindKubeconfigs: Record<string, string> = {};
+  const kindRes = result(kindClusters);
+  if (kindRes.ok) {
+    const clusterNames = kindRes.stdout
+      .split("\n")
+      .map((n) => n.trim())
+      .filter((n) => isSafeResourceName(n) && !n.includes("/"));
+    await Promise.all(
+      clusterNames.map(async (cluster) => {
+        const ctxName = `kind-${cluster}`;
+        const candidateKc = `${repoExpanded}/.tmp/kubeconfig-${cluster}`;
+        if (await window.studio.fileExists(candidateKc)) {
+          kindKubeconfigs[ctxName] = candidateKc;
+        }
+        if (!seen.has(ctxName)) {
+          seen.add(ctxName);
+          contexts.push({
+            name: ctxName,
+            description: `Kind cluster (${cluster})`,
+            isCurrent: !cur && contexts.length === 0,
+          });
+        }
+      }),
+    );
+  }
+  return { contexts, kindKubeconfigs };
 }
 
 export const store = new Store();

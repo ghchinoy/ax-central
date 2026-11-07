@@ -73,9 +73,10 @@ type StreamExit struct {
 
 // SessionRequest describes an interactive stdio session.
 type SessionRequest struct {
-	ID      string   `json:"id"`
-	Program string   `json:"program"`
-	Args    []string `json:"args"`
+	ID      string            `json:"id"`
+	Program string            `json:"program"`
+	Args    []string          `json:"args"`
+	Env     map[string]string `json:"env"`
 }
 
 // SessionData is a raw chunk of stdout or stderr from an interactive session.
@@ -150,6 +151,9 @@ func buildLoginPath() string {
 			"/usr/local/bin",
 			"/usr/local/go/bin",
 			filepath.Join(home, "google-cloud-sdk", "bin"),
+			filepath.Join(home, "projects", "ax", ".tmp", "bin"),
+			filepath.Join(home, "projects", "ax", "bin"),
+			filepath.Join(home, "projects", "ax", ".ax-local", "bin"),
 			"/usr/bin",
 			"/bin",
 			"/usr/sbin",
@@ -381,7 +385,12 @@ func (s *Shell) StartSession(req SessionRequest, onData func(data string, stream
 		prog = req.Program
 	}
 	cmd := exec.Command(prog, req.Args...)
-	cmd.Env = s.mergeEnv(map[string]string{"TERM": "dumb"})
+	envOverrides := make(map[string]string, len(req.Env)+1)
+	envOverrides["TERM"] = "dumb"
+	for k, v := range req.Env {
+		envOverrides[k] = v
+	}
+	cmd.Env = s.mergeEnv(envOverrides)
 	setProcessGroup(cmd)
 
 	stdinPipe, errIn := cmd.StdinPipe()

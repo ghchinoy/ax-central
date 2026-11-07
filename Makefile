@@ -14,7 +14,7 @@
 
 # AX Central (Wails v2 + Lit WebComponents + WebMCP). See README.md.
 
-.PHONY: help build wails-build dev run-frontend test test-go test-frontend lint security check smoke-local diagrams screenshots format doctor bootstrap version release-darwin clean
+.PHONY: help build wails-build dev run-frontend test test-go test-frontend lint security check smoke-local smoke-crostini diagrams screenshots format doctor bootstrap version release-darwin clean
 
 VERSION := $(shell jq -r .info.productVersion wails.json 2>/dev/null || echo 0.1.0)
 LDFLAGS := -s -w -X main.appVersion=$(VERSION)
@@ -89,6 +89,9 @@ check: lint security test
 
 smoke-local:
 	bash hack/smoke-local.sh
+
+smoke-crostini:
+	bash hack/smoke-crostini.sh
 
 diagrams:
 	@for f in docs/diagrams/*.dot; do \

@@ -352,6 +352,7 @@ export class AxTerminalSession extends LitElement {
         String(rows),
         String(cols),
       ],
+      env: store.envForContext,
     });
 
     this.cleanupSession = () => {

@@ -15,6 +15,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -263,5 +264,127 @@ func TestDoctorScriptJSON(t *testing.T) {
 	}
 	if !strings.Contains(res.Stdout, `"checks":[`) || !strings.Contains(res.Stdout, `"ax-repo-variant"`) {
 		t.Fatalf("sh.Run(%+v) stdout = %q, want checks array with ax-repo-variant", req, res.Stdout)
+	}
+}
+
+func TestLiveCrostiniKindClusterE2E(t *testing.T) {
+	sh := NewShell()
+	home, _ := os.UserHomeDir()
+	kcPath := filepath.Join(home, "projects", "ax", ".tmp", "kubeconfig-ax-e2e")
+	if _, err := os.Stat(kcPath); err != nil {
+		t.Skipf("skipping live Crostini Kind E2E test: %s not found", kcPath)
+	}
+	axBin := sh.Which("ax")
+	if axBin == "" {
+		t.Skip("skipping live Crostini Kind E2E test: ax binary not found on Shell PATH")
+	}
+	clustersRes := sh.Run(RunRequest{Program: "kind", Args: []string{"get", "clusters"}})
+	if clustersRes.Status != 0 || !strings.Contains(clustersRes.Stdout, "ax-e2e") {
+		t.Skip("skipping live Crostini Kind E2E test: kind cluster ax-e2e not running")
+	}
+
+	env := map[string]string{"KUBECONFIG": kcPath}
+	stamp := time.Now().UnixNano()
+	taskName := fmt.Sprintf("axcentral-e2e-task-%d", stamp)
+	wsName := fmt.Sprintf("axcentral-e2e-ws-%d", stamp)
+	_ = sh.Run(RunRequest{
+		Program: axBin,
+		Args:    []string{"--context", "kind-ax-e2e", "-a", "default", "delete", "task", "axcentral-e2e-task"},
+		Env:     env,
+	})
+	_ = sh.Run(RunRequest{
+		Program: axBin,
+		Args:    []string{"--context", "kind-ax-e2e", "-a", "default", "delete", "workspace", "axcentral-e2e-ws"},
+		Env:     env,
+	})
+	t.Cleanup(func() {
+		_ = sh.Run(RunRequest{
+			Program: axBin,
+			Args:    []string{"--context", "kind-ax-e2e", "-a", "default", "delete", "task", taskName},
+			Env:     env,
+		})
+		_ = sh.Run(RunRequest{
+			Program: axBin,
+			Args:    []string{"--context", "kind-ax-e2e", "-a", "default", "delete", "workspace", wsName},
+			Env:     env,
+		})
+	})
+
+	manifest := "apiVersion: ax.io/v1alpha1\nkind: Workspace\nmetadata:\n  name: " + wsName + "\n  atespace: default\nspec:\n  files:\n    - path: NOTE.txt\n      content: \"verified-by-ax-central\"\n---\napiVersion: ax.io/v1alpha1\nkind: Task\nmetadata:\n  name: " + taskName + "\n  atespace: default\nspec:\n  workspace:\n    name: " + wsName + "\n  debug: true\n"
+	applyRes := sh.Run(RunRequest{
+		Program: axBin,
+		Args:    []string{"--context", "kind-ax-e2e", "-a", "default", "apply", "-f", "-"},
+		Stdin:   manifest,
+		Env:     env,
+	})
+	if applyRes.Status != 0 {
+		t.Fatalf("sh.Run(ax apply) status = %d, want 0 (stderr: %q)", applyRes.Status, applyRes.Stderr)
+	}
+
+	resumeRes := sh.Run(RunRequest{
+		Program: axBin,
+		Args:    []string{"--context", "kind-ax-e2e", "-a", "default", "resume", "task", taskName},
+		Env:     env,
+	})
+	if resumeRes.Status != 0 {
+		t.Fatalf("sh.Run(ax resume) status = %d, want 0 (stderr: %q)", resumeRes.Status, resumeRes.Stderr)
+	}
+
+	// Verify interactive StartSession (ax ssh) with Env{"KUBECONFIG": kcPath}
+	var mu sync.Mutex
+	var sshOut strings.Builder
+	gotSSH := make(chan struct{}, 1)
+	sshDone := make(chan int, 1)
+	sessReq := SessionRequest{
+		ID:      "sess-crostini-e2e",
+		Program: axBin,
+		Args:    []string{"--context", "kind-ax-e2e", "-a", "default", "ssh", taskName, "--", "sh", "-c", "cat /workspace/NOTE.txt"},
+		Env:     env,
+	}
+	sh.StartSession(
+		sessReq,
+		func(data string, _ string) {
+			mu.Lock()
+			sshOut.WriteString(data)
+			if strings.Contains(sshOut.String(), "verified-by-ax-central") {
+				select {
+				case gotSSH <- struct{}{}:
+				default:
+				}
+			}
+			mu.Unlock()
+		},
+		func(status int) {
+			sshDone <- status
+		},
+	)
+
+	sh.EndSessionInput("sess-crostini-e2e")
+
+	select {
+	case <-gotSSH:
+	case <-time.After(15 * time.Second):
+		mu.Lock()
+		got := sshOut.String()
+		mu.Unlock()
+		t.Fatalf("sh.StartSession(%+v) output = %q, want substring %q", sessReq, got, "verified-by-ax-central")
+	}
+
+	select {
+	case status := <-sshDone:
+		if status != 0 {
+			t.Fatalf("sh.StartSession(%+v) exit status = %d, want 0", sessReq, status)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatalf("sh.StartSession(%+v) did not exit within 10s", sessReq)
+	}
+
+	suspendRes := sh.Run(RunRequest{
+		Program: axBin,
+		Args:    []string{"--context", "kind-ax-e2e", "-a", "default", "suspend", "task", taskName},
+		Env:     env,
+	})
+	if suspendRes.Status != 0 {
+		t.Fatalf("sh.Run(ax suspend) status = %d, want 0 (stderr: %q)", suspendRes.Status, suspendRes.Stderr)
 	}
 }

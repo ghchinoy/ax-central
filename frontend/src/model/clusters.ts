@@ -265,6 +265,10 @@ export class ClustersStore extends EventTarget {
   ): PrerequisiteCheck[] {
     const repo = store.state.settings.repoPath;
     const exp = store.state.settings.experimentsPath;
+    const isLinux = store.state.os === "linux";
+    const repoReadyOnLinux = isLinux && this.state.scriptFound;
+    const binsReadyOnLinux = isLinux && !!store.state.repoAxBin;
+    const expReadyOnLinux = isLinux && ateLocal.experimentsFound;
     const checks: PrerequisiteCheck[] = [
       {
         id: "go",
@@ -272,24 +276,34 @@ export class ClustersStore extends EventTarget {
         title: "Go toolchain",
         status: tools.go ? "ok" : "fail",
         detail: tools.go ? "go installed on PATH" : "go not found on PATH",
-        fix: tools.go ? "" : "brew install go",
+        fix: tools.go
+          ? ""
+          : isLinux
+            ? "sudo apt-get install -y golang-go"
+            : "brew install go",
       },
       {
         id: "apple-container",
         tier: "ate-local",
         title: "Apple container runtime",
         status: !ateLocal.available
-          ? "warn"
+          ? isLinux
+            ? "ok"
+            : "warn"
           : ateLocal.daemonRunning
             ? "ok"
             : "warn",
         detail: !ateLocal.available
-          ? "/usr/local/bin/container not found"
+          ? isLinux
+            ? "macOS-only (Linux/Crostini uses Kind + gVisor)"
+            : "/usr/local/bin/container not found"
           : ateLocal.daemonRunning
             ? "Apple container CLI & daemon running"
             : "Apple container installed; daemon stopped",
         fix: !ateLocal.available
-          ? "brew install --cask container && container system start"
+          ? isLinux
+            ? ""
+            : "brew install --cask container && container system start"
           : ateLocal.daemonRunning
             ? ""
             : "container system start",
@@ -301,49 +315,69 @@ export class ClustersStore extends EventTarget {
       {
         id: "ax-repo-variant",
         tier: "ate-local",
-        title: "AX repo (ate-local variant)",
-        status: ateLocal.scriptFound ? "ok" : "warn",
+        title: isLinux
+          ? "AX repo (Kind / Crostini)"
+          : "AX repo (ate-local variant)",
+        status: ateLocal.scriptFound || repoReadyOnLinux ? "ok" : "warn",
         detail: ateLocal.scriptFound
           ? `${repo} has examples/ate_local/local-stack.sh`
-          : `${repo} missing examples/ate_local/local-stack.sh (needs feat/ate-local-apple-container)`,
-        fix: ateLocal.scriptFound
-          ? ""
-          : `Clone/checkout ghchinoy/ax:feat/ate-local-apple-container in ${repo}`,
-        installTarget: ateLocal.scriptFound ? undefined : "ax-repo",
+          : repoReadyOnLinux
+            ? `${repo} has ${SCRIPT}`
+            : `${repo} missing examples/ate_local/local-stack.sh (needs feat/ate-local-apple-container)`,
+        fix:
+          ateLocal.scriptFound || repoReadyOnLinux
+            ? ""
+            : `Clone/checkout ghchinoy/ax:feat/ate-local-apple-container in ${repo}`,
+        installTarget:
+          ateLocal.scriptFound || repoReadyOnLinux ? undefined : "ax-repo",
       },
       {
         id: "ate-local-bins",
         tier: "ate-local",
-        title: "ate-local & arm64 task runner",
-        status: ateLocal.binsBuilt ? "ok" : "warn",
+        title: isLinux ? "ax CLI binary" : "ate-local & arm64 task runner",
+        status: ateLocal.binsBuilt || binsReadyOnLinux ? "ok" : "warn",
         detail: ateLocal.binsBuilt
           ? `${repo}/.ax-local/bin/{ax,ate-local,ax-server,linux_arm64/ax-task-runner} ready`
-          : `${repo}/.ax-local/bin binaries not built yet`,
-        fix: ateLocal.binsBuilt ? "" : "Build ate-local & arm64 task runner",
+          : binsReadyOnLinux
+            ? `${store.state.repoAxBin} ready`
+            : `${repo}/.ax-local/bin binaries not built yet`,
+        fix:
+          ateLocal.binsBuilt || binsReadyOnLinux
+            ? ""
+            : "Build ate-local & arm64 task runner",
         installTarget:
-          !ateLocal.binsBuilt && ateLocal.scriptFound
+          !ateLocal.binsBuilt && !binsReadyOnLinux && ateLocal.scriptFound
             ? "ate-local-bins"
             : undefined,
       },
       {
         id: "ax-experiments",
         tier: "ate-local",
-        title: "ax-experiments & agent image",
+        title: isLinux
+          ? "ax-experiments & Crostini track"
+          : "ax-experiments & agent image",
         status:
-          ateLocal.experimentsFound && ateLocal.agentImageBuilt ? "ok" : "warn",
+          (ateLocal.experimentsFound && ateLocal.agentImageBuilt) ||
+          expReadyOnLinux
+            ? "ok"
+            : "warn",
         detail: !ateLocal.experimentsFound
           ? `${exp} not found`
           : ateLocal.agentImageBuilt
             ? `${exp} + ax-agent-local:latest image ready`
-            : `${exp} present; ax-agent-local:latest image not built`,
+            : expReadyOnLinux
+              ? `${exp} + crostini/setup-crostini.sh ready`
+              : `${exp} present; ax-agent-local:latest image not built`,
         fix: !ateLocal.experimentsFound
           ? `Clone ghchinoy/ax-experiments into ${exp}`
-          : ateLocal.agentImageBuilt
+          : ateLocal.agentImageBuilt || expReadyOnLinux
             ? ""
             : "container build -t ax-agent-local:latest swarm/agent-image",
         installTarget: !ateLocal.experimentsFound
           ? "ax-experiments"
-          : !ateLocal.agentImageBuilt && ateLocal.daemonRunning
+          : !ateLocal.agentImageBuilt &&
+              !expReadyOnLinux &&
+              ateLocal.daemonRunning
             ? "agent-image"
             : undefined,
       },
@@ -496,11 +530,16 @@ export class ClustersStore extends EventTarget {
       const contexts = new Set(ctxs.stdout.split("\n").map((l) => l.trim()));
       const clustersList = await Promise.all(
         names.map(async (name): Promise<Cluster> => {
-          const r = await window.studio.run({
-            program: "/bin/sh",
-            args: ["-c", PROBE, "probe", name],
-            env,
-          });
+          const [r, hasTmpKc] = await Promise.all([
+            window.studio.run({
+              program: "/bin/sh",
+              args: ["-c", PROBE, "probe", name],
+              env,
+            }),
+            window.studio.fileExists(
+              `${store.state.settings.repoPath}/.tmp/kubeconfig-${name}`,
+            ),
+          ]);
           const kv = Object.fromEntries(
             r.stdout
               .split("\n")
@@ -520,7 +559,7 @@ export class ClustersStore extends EventTarget {
             substrateCommit: kv.commit ?? "",
             ax: replicas(kv.ax),
             workers: replicas(kv.workers),
-            inKubeconfig: contexts.has(`kind-${name}`),
+            inKubeconfig: contexts.has(`kind-${name}`) || hasTmpKc,
           };
         }),
       );
@@ -595,6 +634,8 @@ export class ClustersStore extends EventTarget {
     return [
       "set -e",
       "ORIG=${KUBECONFIG:-$HOME/.kube/config}; ORIG=${ORIG%%:*}",
+      'export SUBSTRATE_IMAGE_CACHE_DIR="${SUBSTRATE_IMAGE_CACHE_DIR:-$HOME/.cache/substrate-registry}"',
+      'mkdir -p "$SUBSTRATE_IMAGE_CACHE_DIR"',
       `KUBECONFIG="$PWD/${tmp}" KIND_CLUSTER_NAME=${shq(name)} AX_WORKER_REPLICAS=${safeWorkers} AX_SNAPSHOTS_BUCKET=` +
         `${substrateRef ? ` SUBSTRATE_REF=${shq(substrateRef)}` : ""} bash ${SCRIPT}`,
       `printf '\\n==> Adding context kind-%s to %s\\n' ${shq(name)} "$ORIG"`,

@@ -122,7 +122,9 @@ export class AxTaskLogs extends LitElement {
         id: next++,
         time,
         text,
-        runner: /^time=\S+ level=\w+ msg=/.test(text),
+        runner:
+          /^time=\S+ level=\w+ msg=/.test(text) ||
+          /^[IWEF]\d{4} \d{2}:\d{2}:\d{2}\.\d+\s+\d+ \S+\.go:\d+\]/.test(text),
       });
       flush ??= setTimeout(() => {
         const add = pending;
@@ -163,9 +165,14 @@ export class AxTaskLogs extends LitElement {
         return;
       }
       const lab = rec.labels;
+      const actorMatch =
+        lab?.["ate.actor.name"] === t.name ||
+        (!!t.actor && lab?.["ate.actor.name"] === t.actor) ||
+        (typeof lab?.["ate.template.name"] === "string" &&
+          lab["ate.template.name"].startsWith(`${t.name}-tmpl-`));
       if (
         !lab ||
-        lab["ate.actor.name"] !== t.name ||
+        !actorMatch ||
         lab["ate.atespace"] !== t.atespace ||
         lab["ate.actor.container.name"] !== "guest"
       )
@@ -204,6 +211,7 @@ export class AxTaskLogs extends LitElement {
       void window.studio.stream({
         id,
         commandLine: `for ns in ${namespaces}; do ${kc} -n "$ns" logs -l ate.dev/worker-pool --all-containers --prefix=false --ignore-errors -f --since=24h --tail=-1 --max-log-requests=50 2>&1 & done; wait`,
+        env: store.envForContext,
       });
     }
 

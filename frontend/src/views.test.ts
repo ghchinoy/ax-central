@@ -280,6 +280,18 @@ describe("WebMCP ToolHost & AX tools", () => {
     expect(badRemove.error).toContain("invalid resource identifier");
     expect(await clusters.bootstrap("unknown-target")).toBe(false);
     expect(await clusters.addToKubeconfig("bad;name")).toBe(false);
+
+    // Crostini / Kind .tmp/kubeconfig-* context discovery and envForContext
+    store.set({
+      context: "kind-ax-e2e",
+      kindKubeconfigs: {
+        "kind-ax-e2e": "/Users/dev/projects/ax/.tmp/kubeconfig-ax-e2e",
+      },
+    });
+    expect(store.envForContext).toEqual({
+      KUBECONFIG: "/Users/dev/projects/ax/.tmp/kubeconfig-ax-e2e",
+    });
+    store.set({ context: "local", kindKubeconfigs: {} });
   });
 
   it("walks through the full E2E debian:12 flow on local (ate-local): Clusters -> Deploy -> Activity -> Logs -> Map -> Terminal -> WebMCP", async () => {

@@ -172,6 +172,8 @@ append_check() {
   fi
 }
 
+OS_NAME="$(uname -s)"
+
 # 1. Go toolchain
 if GO_BIN="$(command -v go 2>/dev/null)"; then
   GO_VER="$(go version 2>/dev/null | awk '{print $3}')"
@@ -187,15 +189,19 @@ if CONTAINER_BIN="$(command -v container 2>/dev/null)"; then
   else
     append_check "apple-container" "ate-local" "Apple container runtime" "warn" "${CONTAINER_BIN} installed, daemon stopped" "container system start"
   fi
+elif [[ "$OS_NAME" == "Linux" ]]; then
+  append_check "apple-container" "ate-local" "Apple container runtime" "ok" "macOS-only (Linux/Crostini uses Kind + gVisor)" ""
 else
   append_check "apple-container" "ate-local" "Apple container runtime" "warn" "/usr/local/bin/container not found" "brew install --cask container && container system start"
 fi
 
-# 3. AX repository & ate-local variant
+# 3. AX repository & ate-local / Kind variant
 if [[ -d "$AX_REPO" ]]; then
+  BRANCH="$(git -C "$AX_REPO" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")"
   if [[ -f "$AX_REPO/examples/ate_local/local-stack.sh" && -d "$AX_REPO/cmd/ate-local" ]]; then
-    BRANCH="$(git -C "$AX_REPO" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")"
     append_check "ax-repo-variant" "ate-local" "AX repo (ate-local variant)" "ok" "${AX_REPO} (branch: ${BRANCH})" ""
+  elif [[ "$OS_NAME" == "Linux" && -f "$AX_REPO/hack/setup-e2e-kind.sh" ]]; then
+    append_check "ax-repo-variant" "ate-local" "AX repo (Kind / Crostini)" "ok" "${AX_REPO} (branch: ${BRANCH}, setup-e2e-kind.sh ready)" ""
   else
     append_check "ax-repo-variant" "ate-local" "AX repo (ate-local variant)" "warn" "${AX_REPO} missing cmd/ate-local (needs feat/ate-local-apple-container)" "hack/doctor.sh --install ax-repo"
   fi
@@ -203,9 +209,11 @@ else
   append_check "ax-repo-variant" "ate-local" "AX repo (ate-local variant)" "fail" "${AX_REPO} not found" "hack/doctor.sh --install ax-repo"
 fi
 
-# 4. Built ate-local binaries (.ax-local/bin)
+# 4. Built ate-local / Kind binaries
 if [[ -x "$AX_REPO/.ax-local/bin/ax" && -x "$AX_REPO/.ax-local/bin/ate-local" && -x "$AX_REPO/.ax-local/bin/ax-server" && -x "$AX_REPO/.ax-local/bin/linux_arm64/ax-task-runner" ]]; then
   append_check "ate-local-bins" "ate-local" "ate-local & arm64 task runner" "ok" "${AX_REPO}/.ax-local/bin ready" ""
+elif [[ "$OS_NAME" == "Linux" && ( -x "$AX_REPO/.tmp/bin/ax" || -x "$AX_REPO/bin/ax" ) ]]; then
+  append_check "ate-local-bins" "ate-local" "ax CLI & task runner" "ok" "${AX_REPO}/.tmp/bin/ax (or bin/ax) ready" ""
 else
   if AX_ON_PATH="$(command -v ax 2>/dev/null)"; then
     append_check "ate-local-bins" "ate-local" "ate-local & arm64 task runner" "warn" "ax on PATH (${AX_ON_PATH}), .ax-local/bin not built yet" "hack/doctor.sh --install ate-local-bins"
@@ -214,10 +222,12 @@ else
   fi
 fi
 
-# 5. AX Experiments repo & ax-agent-local:latest image
+# 5. AX Experiments repo & ax-agent-local:latest / Crostini track
 if [[ -d "$AX_EXPERIMENTS_REPO/swarm" && -d "$AX_EXPERIMENTS_REPO/genkit" ]]; then
   if command -v container >/dev/null 2>&1 && container image list 2>/dev/null | grep -q "ax-agent-local"; then
     append_check "ax-experiments" "ate-local" "ax-experiments & agent image" "ok" "${AX_EXPERIMENTS_REPO} + ax-agent-local:latest" ""
+  elif [[ "$OS_NAME" == "Linux" && -f "$AX_EXPERIMENTS_REPO/crostini/setup-crostini.sh" ]]; then
+    append_check "ax-experiments" "ate-local" "ax-experiments & Crostini track" "ok" "${AX_EXPERIMENTS_REPO}/crostini ready" ""
   else
     append_check "ax-experiments" "ate-local" "ax-experiments & agent image" "warn" "${AX_EXPERIMENTS_REPO} present; ax-agent-local:latest image not built" "hack/doctor.sh --install agent-image"
   fi

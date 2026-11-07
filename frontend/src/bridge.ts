@@ -49,6 +49,7 @@ export interface SessionRequest {
   id: string;
   program: string;
   args: string[];
+  env?: Record<string, string>;
 }
 
 export interface SessionData {
