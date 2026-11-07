@@ -68,7 +68,7 @@ Inside **AX Central.app**:
 3. **Resume and inspect (`⌘1`)**: Open **Activity**, click **Resume (`▶`)** on the task row (~0.7s microVM boot), and click the row to inspect live `container logs -f` output in the **Task Inspector**.
 4. **Open a shell (`⌘4`)**: Click **Terminal** in the inspector (or press `⌘4`) to open an interactive `ax ssh` session (`192.168.64.x:80`) or launch it in `/Applications/Ghostty.app`.
 
-For the complete step-by-step walkthrough with screenshots, read **[Tutorial: Run Your First Local Task in AX Central](docs/tutorials/quickstart-local-stack.md)**.
+For the complete step-by-step walkthrough with screenshots (covering both macOS Apple `container` and Chromebook / Linux Crostini `kind-ax-e2e`), read **[Tutorial: Run Your First Local Task in AX Central](docs/tutorials/quickstart-local-stack.md)**.
 
 ## Architecture
 

@@ -47,7 +47,7 @@ while [[ $# -gt 0 ]]; do
       fi
       ;;
     -h|--help)
-      echo "Usage: hack/doctor.sh [--json] [--install [all|container-daemon|ax-repo|ate-local-bins|ax-experiments|agent-image]]"
+      echo "Usage: hack/doctor.sh [--json] [--install [all|wails|container-daemon|ax-repo|ate-local-bins|ax-experiments|agent-image]]"
       exit 0
       ;;
     *)
@@ -68,6 +68,22 @@ json_escape() {
 install_target() {
   local target="$1"
   case "$target" in
+    wails)
+      if [[ "$(uname -s)" == "Linux" ]] && command -v apt-get >/dev/null 2>&1; then
+        if ! command -v pkg-config >/dev/null 2>&1 || ! pkg-config --exists gtk+-3.0 || ( ! pkg-config --exists webkit2gtk-4.1 && ! pkg-config --exists webkit2gtk-4.0 ); then
+          echo "==> Installing Linux GTK3 & WebKit2GTK 4.1 development libraries..."
+          sudo DEBIAN_FRONTEND=noninteractive apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends libgtk-3-dev libwebkit2gtk-4.1-dev pkg-config build-essential
+        fi
+      fi
+      echo "==> Installing Wails CLI v2.17.1..."
+      go install github.com/wailsapp/wails/v2/cmd/wails@v2.17.1
+      if [[ -x "$HOME/go/bin/wails" && -w /usr/local/bin ]]; then
+        ln -sf "$HOME/go/bin/wails" /usr/local/bin/wails || true
+      elif [[ -x "$HOME/go/bin/wails" ]] && sudo -n true 2>/dev/null; then
+        sudo ln -sf "$HOME/go/bin/wails" /usr/local/bin/wails || true
+      fi
+      ;;
     container-daemon)
       echo "==> Starting Apple container daemon..."
       container system start
@@ -114,6 +130,11 @@ install_target() {
       container build -t ax-agent-local:latest "$AX_EXPERIMENTS_REPO/swarm/agent-image"
       ;;
     all)
+      if ! command -v wails >/dev/null 2>&1 && [[ ! -x "$HOME/go/bin/wails" ]]; then
+        install_target wails || true
+      elif [[ "$(uname -s)" == "Linux" ]] && ( ! command -v pkg-config >/dev/null 2>&1 || ! pkg-config --exists gtk+-3.0 || ( ! pkg-config --exists webkit2gtk-4.1 && ! pkg-config --exists webkit2gtk-4.0 ) ); then
+        install_target wails || true
+      fi
       if command -v container >/dev/null 2>&1 && ! container list >/dev/null 2>&1; then
         install_target container-daemon || true
       fi
@@ -174,12 +195,19 @@ append_check() {
 
 OS_NAME="$(uname -s)"
 
-# 1. Go toolchain
+# 1. Go toolchain & Wails CLI
 if GO_BIN="$(command -v go 2>/dev/null)"; then
   GO_VER="$(go version 2>/dev/null | awk '{print $3}')"
-  append_check "go" "core" "Go toolchain" "ok" "${GO_VER} (${GO_BIN})" ""
+  WAILS_BIN="$(command -v wails 2>/dev/null || ( [[ -x "$HOME/go/bin/wails" ]] && echo "$HOME/go/bin/wails" ) || true)"
+  if [[ -z "$WAILS_BIN" ]]; then
+    append_check "go" "core" "Go & Wails toolchain" "warn" "${GO_VER} (${GO_BIN}); wails CLI not installed" "hack/doctor.sh --install wails"
+  elif [[ "$OS_NAME" == "Linux" ]] && ( ! command -v pkg-config >/dev/null 2>&1 || ! pkg-config --exists gtk+-3.0 || ( ! pkg-config --exists webkit2gtk-4.1 && ! pkg-config --exists webkit2gtk-4.0 ) ); then
+    append_check "go" "core" "Go & Wails toolchain" "warn" "${GO_VER} + wails (${WAILS_BIN}); missing GTK3/WebKit2GTK dev libs" "hack/doctor.sh --install wails"
+  else
+    append_check "go" "core" "Go & Wails toolchain" "ok" "${GO_VER} + wails (${WAILS_BIN})" ""
+  fi
 else
-  append_check "go" "core" "Go toolchain" "fail" "go not found on PATH" "brew install go"
+  append_check "go" "core" "Go & Wails toolchain" "fail" "go not found on PATH" "brew install go"
 fi
 
 # 2. Apple container CLI & daemon

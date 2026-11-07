@@ -13,9 +13,9 @@ This documentation follows the [Diátaxis](https://diataxis.fr/) structure so yo
 
 ## 1. Tutorials (Learning-Oriented)
 
-Start here if you are new to AX Central and want a hands-on walkthrough that runs from start to finish on your Mac:
+Start here if you are new to AX Central and want a hands-on walkthrough that runs from start to finish on macOS (`ate-local`) or Chromebook / Linux Crostini (`kind-ax-e2e` + `gVisor`):
 
-* **[Run Your First Local Task in AX Central](tutorials/quickstart-local-stack.md)**: Audit prerequisites with `make doctor`, start the 3.3-second Apple `container` (`ate-local`) stack in Clusters, deploy a `debian:12` task with a workspace, stream guest logs, open an interactive `ax ssh` shell, and invoke tools from the WebMCP Inspector.
+* **[Run Your First Local Task in AX Central](tutorials/quickstart-local-stack.md)**: Audit prerequisites with `make doctor`, run tasks on either the 3.3-second macOS Apple `container` (`ate-local`) stack or a local Crostini `kind` + Agent Substrate (`gVisor`) cluster, stream guest logs, open an interactive `ax ssh` shell, and invoke tools from the WebMCP Inspector.
 
 ## 2. How-To Guides (Task-Oriented)
 

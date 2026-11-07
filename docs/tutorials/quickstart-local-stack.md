@@ -1,6 +1,10 @@
 # Tutorial: Run Your First Local Task in AX Central
 
-This tutorial walks through booting the local Apple `container` (`ate-local`) stack on macOS, deploying a `debian:12` task with a workspace, streaming guest logs, opening an interactive `ax ssh` shell, and calling AX tools through the WebMCP Inspector. The entire walkthrough runs locally in under two minutes and requires no cloud credentials or API keys.
+This tutorial walks through running your first sandboxed task end-to-end in AX Central on either:
+* **macOS Apple `container` (`ate-local`)**: Isolated Linux `arm64` microVMs on `vmnet` (`192.168.64.x`).
+* **Linux / Chromebook Crostini (`kind` + `gVisor`)**: Full Kubernetes Agent Substrate (`v1.0.0-rc.1+`) with `runsc` `gVisor` sandboxes (`10.244.0.x`), `atenet-router` mTLS ingress, and RustFS volume checkpoints.
+
+Both workflows deploy a task with a workspace, stream live guest logs, open an interactive `ax ssh` shell, and invoke AX tools through the WebMCP Inspector in under two minutes with zero cloud credentials or API keys.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="../diagrams/02-task-lifecycle-dark.webp">
@@ -147,3 +151,68 @@ make wails-build && open "build/bin/AX Central.app"
   <source media="(prefers-color-scheme: dark)" srcset="../screenshots/webmcp-dark.webp">
   <img alt="AX Central WebMCP Inspector drawer" src="../screenshots/webmcp-light.webp">
 </picture>
+
+---
+
+## Walkthrough B: Running on Chromebook / Linux Crostini (`kind-ax-e2e` + `gVisor`)
+
+When you run AX Central on a Chromebook Linux VM (Crostini / Bagels KVM with Debian 13 `trixie`) or standard Linux workstation provisioned with `~/projects/ax-experiments/crostini/setup-crostini.sh` (or `~/projects/ax/hack/setup-e2e-kind.sh`), AX Central connects to your local `kind` + Agent Substrate (`v1.0.0-rc.1+`) cluster automatically.
+
+### Step 1: Verify the Crostini Environment and Launch AX Central
+
+1. Run the prerequisite auditor from the `ax-central` root:
+   ```bash
+   make doctor
+   ```
+   On Crostini, `hack/doctor.sh` verifies Go, Wails + GTK3/WebKit2GTK 4.1, `~/projects/ax` (`setup-e2e-kind.sh` and `.tmp/bin/ax`), `~/projects/ax-experiments/crostini`, and `kind` + `kubectl` + `docker`:
+   ```text
+     [✓] Go & Wails toolchain             go1.27.1 + wails (/usr/local/bin/wails)
+     [✓] Apple container runtime          macOS-only (Linux/Crostini uses Kind + gVisor)
+     [✓] AX repo (Kind / Crostini)        /home/you/projects/ax (branch: main, setup-e2e-kind.sh ready)
+     [✓] ax CLI & task runner             /home/you/projects/ax/.tmp/bin/ax (or bin/ax) ready
+     [✓] ax-experiments & Crostini track  /home/you/projects/ax-experiments/crostini ready
+     [✓] Kind & container engine          kind + kubectl + docker
+   ```
+   *(If Wails or the GTK3/WebKit2GTK development headers are missing on a fresh Crostini container, run `make bootstrap` to install them.)*
+2. Optionally run the headless CLI E2E smoke test against `kind-ax-e2e`:
+   ```bash
+   make smoke-crostini
+   ```
+3. Start the desktop application in live-reload development mode (or build the native binary with `make wails-build && ./build/bin/ax-central`):
+   ```bash
+   make dev
+   ```
+   `Makefile` automatically passes `-tags webkit2_41` on Debian 13 (`trixie`) when `webkit2gtk-4.1` is installed.
+
+### Step 2: Inspect the `ax-e2e` Cluster in Clusters (`Ctrl+5`)
+
+1. On startup, `store.ts` discovers `~/projects/ax/.tmp/bin/ax` and `~/projects/ax/.tmp/kubeconfig-ax-e2e`, and selects **`kind-ax-e2e`** (`ax-e2e` in the top toolbar Context dropdown) as the active context.
+2. Press **`Ctrl+5`** to open **Clusters**. The **`ax-e2e`** card displays three green health layers:
+   * **AX**: `ax-server 1/1 · 2/2 gVisor workers`
+   * **Agent Substrate**: `ate-api-server 2/2 · f86fde9` (`v1.0.0-rc.1`)
+   * **Kind**: `1/1 nodes Ready · Kubernetes 1.37.0`
+3. If you create or reinstall a cluster from the **New cluster** card on the right, `clusters.ts` automatically exports `SUBSTRATE_IMAGE_CACHE_DIR="$HOME/.cache/substrate-registry"` so warm cluster builds reuse the cached 538 MB Substrate images in under a minute.
+
+### Step 3: Deploy a `gVisor` Task in Deploy (`Ctrl+3`)
+
+1. Press **`Ctrl+3`** to open **Deploy**.
+2. Open **Templates** and select **`Shell`** (`simple`):
+   * Leave **Image** blank so `ax-server` schedules the cluster's local default runner image (`localhost:5001/ax-task-runner`, which includes the guest HTTP/exec server and metadata proxy).
+   * Leave **Command** blank (or enter a custom command) and keep **Debug** toggled **on** (`spec.debug: true`).
+   * Under **Workspace**, select **New**, name it `crostini-ws`, and click **Add file** to create `AGENTS.md` with sample instructions.
+3. Click **Create** (`Ctrl+Enter`). Once created, click **Resume & Open in Activity** in the top-right header.
+
+### Step 4: Stream `gVisor` Guest Logs and Open an `ax ssh` Terminal (`Ctrl+1` / `Ctrl+4`)
+
+1. In **Activity** (`Ctrl+1`), Agent Substrate allocates a `gVisor` (`runsc`) sandbox on `ax-workers` (`10.244.0.x`), mounts `/workspace`, and transitions the task to **`Running`**.
+2. Click the task row to open the **Task Inspector**:
+   * **Conditions**: Shows `WorkspaceReady: True (SetupComplete)` and `Ready: True (TaskRunning)`.
+   * **Logs**: `<ax-task-logs>` streams the guest container output from `kubectl logs -l ate.dev/worker-pool` using the auto-discovered `KUBECONFIG`.
+3. Click **Terminal** in the Task Inspector (or press **`Ctrl+4`**) to open an interactive `ax ssh` tab routed through `atenet-router` mTLS into the `gVisor` sandbox:
+   ```sh
+   uname -a
+   # Linux actor 4.19.0-gvisor #1 SMP ... x86_64 GNU/Linux
+   ls -la /workspace
+   curl -s "$AX_METADATA_URL/metadata/v1alpha1/ax/task"
+   ```
+4. Click **Suspend (`⏸`)** on the task row in **Activity** to checkpoint `/workspace` to in-cluster RustFS (`gs://ate-snapshots/ax/`) and release the `gVisor` worker pod.

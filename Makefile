@@ -16,8 +16,10 @@
 
 .PHONY: help build wails-build dev run-frontend test test-go test-frontend lint security check smoke-local smoke-crostini diagrams screenshots format doctor bootstrap version release-darwin clean
 
-VERSION := $(shell jq -r .info.productVersion wails.json 2>/dev/null || echo 0.1.0)
+VERSION := $(shell jq -r .info.productVersion wails.json 2>/dev/null || echo 0.2.0)
 LDFLAGS := -s -w -X main.appVersion=$(VERSION)
+WAILS := $(shell command -v wails 2>/dev/null || echo $(HOME)/go/bin/wails)
+WAILS_TAGS := $(shell if [ "$$(uname -s)" = "Linux" ] && command -v pkg-config >/dev/null 2>&1 && pkg-config --exists webkit2gtk-4.1 && ! pkg-config --exists webkit2gtk-4.0; then echo "-tags webkit2_41"; fi)
 
 help:
 	@echo "make build          - frontend (npm install first) + Go binary (v$(VERSION))"
@@ -45,10 +47,10 @@ frontend/dist: frontend/node_modules
 	cd frontend && npm run build
 
 build: frontend/dist
-	go build -ldflags "$(LDFLAGS)" -o ax-central .
+	go build $(WAILS_TAGS) -ldflags "$(LDFLAGS)" -o ax-central .
 
 wails-build: frontend/node_modules
-	wails build -ldflags "$(LDFLAGS)"
+	"$(WAILS)" build $(WAILS_TAGS) -ldflags "$(LDFLAGS)"
 
 version:
 	@echo "$(VERSION)"
@@ -59,7 +61,7 @@ release-darwin: wails-build
 	cd dist && shasum -a 256 "AX-Central-v$(VERSION)-darwin-arm64.zip" > SHA256SUMS
 
 dev: frontend/node_modules
-	wails dev
+	"$(WAILS)" dev $(WAILS_TAGS)
 
 run-frontend: frontend/node_modules
 	cd frontend && npm run dev
