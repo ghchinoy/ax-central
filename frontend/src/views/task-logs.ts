@@ -611,13 +611,14 @@ export class AxTaskLogs extends LitElement {
       `task-log-line ${l.runner ? "runner" : ""} src-${l.source}`.trim();
     const text = l.text.replace(/\r/g, "") || " ";
     const tid = l.traceID;
+    const label = tid ? `trace:${tid.slice(0, 7)}` : "";
     const pill = tid
       ? html` <button
           class="trace-pill ${this.selectedTraceID === tid ? "active" : ""}"
           title="Inspect OpenTelemetry trace ${tid}"
           @click=${() => void this.selectTrace(tid)}
         >
-          trace:${tid.slice(0, 7)}
+          ${label}
         </button>`
       : nothing;
     return html`<div class=${cls} title=${l.time}>${text}${pill}</div>`;
@@ -983,15 +984,25 @@ export class AxTaskLogs extends LitElement {
       .trace-pill {
         display: inline-flex;
         align-items: center;
-        padding: 1px 6px;
-        border-radius: 999px;
-        border: 1px solid color-mix(in srgb, var(--primary) 45%, transparent);
+        height: 15px;
+        padding: 0 5px;
+        margin-left: 4px;
+        border-radius: 4px;
+        border: 1px solid color-mix(in srgb, var(--primary) 40%, transparent);
         background: color-mix(in srgb, var(--primary) 14%, transparent);
         color: var(--primary);
         font-family: var(--font-mono);
-        font-size: 10.5px;
+        font-size: 9.5px;
+        line-height: 1;
+        white-space: nowrap;
         cursor: pointer;
-        vertical-align: baseline;
+        vertical-align: middle;
+      }
+      .trace-chips .trace-pill {
+        height: 18px;
+        padding: 0 6px;
+        margin-left: 0;
+        font-size: 10px;
       }
       .trace-pill:hover,
       .trace-pill.active {
