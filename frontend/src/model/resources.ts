@@ -299,6 +299,13 @@ export function validateLabel(s: string): string | null {
     : "lowercase letters, digits and '-', starting and ending alphanumeric";
 }
 
+export const SAFE_RESOURCE_RE = /^[a-zA-Z0-9][a-zA-Z0-9._/-]{0,127}$/;
+
+/** Returns true if s is a safe CLI identifier (no leading '-' or shell metacharacters). */
+export function isSafeResourceName(s: string): boolean {
+  return !s.startsWith("-") && SAFE_RESOURCE_RE.test(s);
+}
+
 /** Substrate rejects images that aren't pinned by digest. */
 export function validateImage(s: string): string | null {
   if (!s) return null;

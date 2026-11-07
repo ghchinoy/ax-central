@@ -491,7 +491,7 @@ export class ClustersStore extends EventTarget {
           ? list.stdout
               .split("\n")
               .map((l) => l.trim())
-              .filter((l) => l && !l.includes(" "))
+              .filter((l) => NAME_RE.test(l))
           : [];
       const contexts = new Set(ctxs.stdout.split("\n").map((l) => l.trim()));
       const clustersList = await Promise.all(
@@ -584,19 +584,27 @@ export class ClustersStore extends EventTarget {
     workers: number,
     substrateRef: string,
   ): string {
+    if (!NAME_RE.test(name)) {
+      throw new Error(`Invalid cluster name "${name}".`);
+    }
+    const safeWorkers = Math.max(
+      1,
+      Math.min(8, Math.trunc(Number(workers) || 1)),
+    );
     const tmp = `.tmp/kubeconfig-${name}`;
     return [
       "set -e",
       "ORIG=${KUBECONFIG:-$HOME/.kube/config}; ORIG=${ORIG%%:*}",
-      `KUBECONFIG="$PWD/${tmp}" KIND_CLUSTER_NAME=${shq(name)} AX_WORKER_REPLICAS=${workers} AX_SNAPSHOTS_BUCKET=` +
+      `KUBECONFIG="$PWD/${tmp}" KIND_CLUSTER_NAME=${shq(name)} AX_WORKER_REPLICAS=${safeWorkers} AX_SNAPSHOTS_BUCKET=` +
         `${substrateRef ? ` SUBSTRATE_REF=${shq(substrateRef)}` : ""} bash ${SCRIPT}`,
       `printf '\\n==> Adding context kind-%s to %s\\n' ${shq(name)} "$ORIG"`,
-      mergeScript(tmp),
+      mergeScript(shq(tmp)),
     ].join("\n");
   }
 
   async create(): Promise<void> {
     const { name, workers, substrateRef } = this.state.form;
+    if (!NAME_RE.test(name)) return;
     await this.exec(
       { kind: "create", cluster: name },
       `Create ${name}`,
@@ -605,6 +613,7 @@ export class ClustersStore extends EventTarget {
   }
 
   async install(name: string): Promise<void> {
+    if (!NAME_RE.test(name)) return;
     await this.exec(
       { kind: "install", cluster: name },
       `Install AX on ${name}`,
@@ -617,10 +626,11 @@ export class ClustersStore extends EventTarget {
   }
 
   async remove(name: string): Promise<void> {
+    if (!NAME_RE.test(name)) return;
     await this.exec(
       { kind: "delete", cluster: name },
       `Delete ${name}`,
-      `kind delete cluster --name ${shq(name)} && rm -f .tmp/kubeconfig-${name}`,
+      `kind delete cluster --name ${shq(name)} && rm -f ${shq(`.tmp/kubeconfig-${name}`)}`,
     );
   }
 
@@ -649,6 +659,15 @@ export class ClustersStore extends EventTarget {
   }
 
   async bootstrap(target = "all"): Promise<boolean> {
+    const validTargets = new Set([
+      "all",
+      "container-daemon",
+      "ax-repo",
+      "ate-local-bins",
+      "ax-experiments",
+      "agent-image",
+    ]);
+    if (!validTargets.has(target)) return false;
     const info = await window.studio.platform();
     const repo = store.state.settings.repoPath.replace(/^~/, info.home);
     const exp = store.state.settings.experimentsPath.replace(/^~/, info.home);
@@ -692,6 +711,7 @@ export class ClustersStore extends EventTarget {
   }
 
   async addToKubeconfig(name: string): Promise<boolean> {
+    if (!NAME_RE.test(name)) return false;
     const tmp = `$TMPDIR/ax-central-kind-${name}.yaml`;
     const ok = await this.exec(
       { kind: "kubeconfig", cluster: name },
@@ -700,9 +720,9 @@ export class ClustersStore extends EventTarget {
         "set -e",
         "ORIG=${KUBECONFIG:-$HOME/.kube/config}; ORIG=${ORIG%%:*}",
         `TMPDIR=\${TMPDIR:-/tmp}; kind get kubeconfig --name ${shq(name)} > "${tmp}"`,
-        mergeScript(tmp),
+        mergeScript(`"${tmp}"`),
         `rm -f "${tmp}"`,
-        `echo "kind-${name} added to $ORIG"`,
+        `printf 'kind-%s added to %s\\n' ${shq(name)} "$ORIG"`,
       ].join("\n"),
     );
     return ok;

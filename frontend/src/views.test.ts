@@ -31,6 +31,7 @@ import {
   tokenizeYAML,
 } from "./model/designer";
 import {
+  isSafeResourceName,
   parseContexts,
   parseTaskYAML,
   parseTasks,
@@ -269,6 +270,16 @@ describe("WebMCP ToolHost & AX tools", () => {
       sig,
     );
     expect(String(scopeInject.error)).toContain('must not start with "-"');
+
+    // Direct store & clusters boundary hardening
+    expect(isSafeResourceName("valid-task_1")).toBe(true);
+    expect(isSafeResourceName("--help")).toBe(false);
+    expect(isSafeResourceName("bad;rm")).toBe(false);
+    const badRemove = await store.remove("task", "--all");
+    expect(badRemove.ok).toBe(false);
+    expect(badRemove.error).toContain("invalid resource identifier");
+    expect(await clusters.bootstrap("unknown-target")).toBe(false);
+    expect(await clusters.addToKubeconfig("bad;name")).toBe(false);
   });
 
   it("walks through the full E2E debian:12 flow on local (ate-local): Clusters -> Deploy -> Activity -> Logs -> Map -> Terminal -> WebMCP", async () => {

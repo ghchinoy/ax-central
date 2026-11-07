@@ -382,6 +382,7 @@ func (s *Shell) StartSession(req SessionRequest, onData func(data string, stream
 	}
 	cmd := exec.Command(prog, req.Args...)
 	cmd.Env = s.mergeEnv(map[string]string{"TERM": "dumb"})
+	setProcessGroup(cmd)
 
 	stdinPipe, errIn := cmd.StdinPipe()
 	stdoutPipe, errOut := cmd.StdoutPipe()
@@ -496,7 +497,7 @@ func (s *Shell) EndSessionInput(id string) {
 	}
 }
 
-// CloseSession kills an active session.
+// CloseSession kills an active session and its process group.
 func (s *Shell) CloseSession(id string) {
 	s.mu.Lock()
 	sess := s.sessions[id]
@@ -504,7 +505,7 @@ func (s *Shell) CloseSession(id string) {
 	if sess == nil || sess.cmd == nil || sess.cmd.Process == nil {
 		return
 	}
-	_ = sess.cmd.Process.Kill()
+	s.terminateSessionProcess(id, sess.cmd)
 }
 
 // CancelAll stops all active streams and sessions.
@@ -533,7 +534,13 @@ var nonWordRe = regexp.MustCompile(`[^\w.-]`)
 // KubeconfigFor writes a temporary kubeconfig setting current-context and prepends it to KUBECONFIG.
 func (s *Shell) KubeconfigFor(kubeContext string) string {
 	safe := nonWordRe.ReplaceAllString(kubeContext, "_")
-	file := filepath.Join(os.TempDir(), fmt.Sprintf("axcentral-kubeconfig-%s.yaml", safe))
+	cfgDir, err := os.UserConfigDir()
+	if err != nil {
+		cfgDir = os.TempDir()
+	}
+	kcDir := filepath.Join(cfgDir, "ax-central", "kubeconfigs")
+	_ = os.MkdirAll(kcDir, 0o700)
+	file := filepath.Join(kcDir, fmt.Sprintf("kubeconfig-%s.yaml", safe))
 	quoted, _ := json.Marshal(kubeContext)
 	content := fmt.Sprintf("apiVersion: v1\nkind: Config\ncurrent-context: %s\n", string(quoted))
 	_ = os.WriteFile(file, []byte(content), 0o600)
@@ -560,10 +567,10 @@ func (s *Shell) ContainerRuntime(shimDir string) ContainerRuntimeInfo {
 			Env:     map[string]string{"KIND_EXPERIMENTAL_PROVIDER": "podman"},
 		}
 	}
-	_ = os.MkdirAll(shimDir, 0o755)
+	_ = os.MkdirAll(shimDir, 0o700)
 	shimPath := filepath.Join(shimDir, "docker")
-	_ = os.WriteFile(shimPath, dockerShimScript, 0o755)
-	_ = os.Chmod(shimPath, 0o755)
+	_ = os.WriteFile(shimPath, dockerShimScript, 0o700)
+	_ = os.Chmod(shimPath, 0o700)
 	return ContainerRuntimeInfo{
 		Runtime: "podman",
 		Env: map[string]string{

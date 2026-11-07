@@ -186,6 +186,16 @@ func TestKubeconfigForAndExpandPath(t *testing.T) {
 	if len(parts) < 2 {
 		t.Fatalf("sh.KubeconfigFor(%q) = %q, want at least 2 path entries", "kind-ax-dev", kc)
 	}
+	if !strings.Contains(parts[0], filepath.Join("ax-central", "kubeconfigs")) {
+		t.Fatalf("sh.KubeconfigFor(%q) path = %q, want path under ax-central/kubeconfigs", "kind-ax-dev", parts[0])
+	}
+	info, err := os.Stat(parts[0])
+	if err != nil {
+		t.Fatalf("os.Stat(%q) = %v, want nil", parts[0], err)
+	}
+	if perm := info.Mode().Perm(); perm != 0o600 {
+		t.Fatalf("os.Stat(%q) perm = %o, want 0600", parts[0], perm)
+	}
 	data, err := os.ReadFile(parts[0])
 	if err != nil {
 		t.Fatalf("os.ReadFile(%q) = %v, want nil", parts[0], err)
@@ -198,6 +208,46 @@ func TestKubeconfigForAndExpandPath(t *testing.T) {
 	wantPath := filepath.Join(home, "ax")
 	if got := ExpandPath("~/ax"); got != wantPath {
 		t.Fatalf("ExpandPath(%q) = %q, want %q", "~/ax", got, wantPath)
+	}
+}
+
+func TestShellCloseSessionProcessGroup(t *testing.T) {
+	sh := NewShell()
+	started := make(chan struct{}, 1)
+	done := make(chan int, 1)
+
+	req := SessionRequest{
+		ID:      "sess-close",
+		Program: "sh",
+		Args:    []string{"-c", "echo ready; sleep 30"},
+	}
+	sh.StartSession(
+		req,
+		func(data string, _ string) {
+			if strings.Contains(data, "ready") {
+				select {
+				case started <- struct{}{}:
+				default:
+				}
+			}
+		},
+		func(status int) {
+			done <- status
+		},
+	)
+
+	select {
+	case <-started:
+	case <-time.After(5 * time.Second):
+		t.Fatalf("sh.StartSession(%+v) did not emit ready within 5s", req)
+	}
+
+	sh.CloseSession("sess-close")
+
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatalf("sh.CloseSession(%q) did not terminate session within 5s", "sess-close")
 	}
 }
 

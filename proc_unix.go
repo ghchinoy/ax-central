@@ -40,3 +40,18 @@ func (s *Shell) terminateStreamProcess(id string, cmd *exec.Cmd) {
 		}
 	}()
 }
+
+func (s *Shell) terminateSessionProcess(id string, cmd *exec.Cmd) {
+	pid := cmd.Process.Pid
+	_ = syscall.Kill(-pid, syscall.SIGTERM)
+	go func() {
+		time.Sleep(100 * time.Millisecond)
+		s.mu.Lock()
+		sess := s.sessions[id]
+		stillRunning := sess != nil && sess.cmd == cmd
+		s.mu.Unlock()
+		if stillRunning {
+			_ = syscall.Kill(-pid, syscall.SIGKILL)
+		}
+	}()
+}

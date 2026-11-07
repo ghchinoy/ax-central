@@ -154,19 +154,19 @@ export class AxCentral extends LitElement {
         ...this.toolLog,
         {
           at: now,
-          kind: "call",
+          kind: "call" as const,
           name: e.name,
           caller: e.caller,
           text: JSON.stringify(e.args),
         },
         {
           at: now,
-          kind: e.result.error ? "error" : "result",
+          kind: (e.result.error ? "error" : "result") as "error" | "result",
           name: e.name,
           caller: e.caller,
           text: e.result.error ? String(e.result.error) : `ok (${e.ms} ms)`,
         },
-      ];
+      ].slice(-200);
     });
     this.addEventListener("mousedown", this.onHostMouseDown, true);
     this.addEventListener("dblclick", this.onHostDblClick);

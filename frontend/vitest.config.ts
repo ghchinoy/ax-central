@@ -1,25 +1,32 @@
 import { existsSync, readdirSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { defineConfig } from "vitest/config";
 import { playwright } from "@vitest/browser-playwright";
 
 function findChromium(): string | undefined {
   if (process.env.CHROMIUM_PATH) return process.env.CHROMIUM_PATH;
-  const cacheDir = join(homedir(), "Library", "Caches", "ms-playwright");
-  if (existsSync(cacheDir)) {
+  const cacheDirs = [
+    join(homedir(), "Library", "Caches", "ms-playwright"),
+    join(homedir(), ".cache", "ms-playwright"),
+  ];
+  const archDirs = [
+    "chrome-headless-shell-mac-arm64",
+    "chrome-headless-shell-mac-x64",
+    "chrome-headless-shell-linux64",
+    "chrome-headless-shell-linux-arm64",
+  ];
+  for (const cacheDir of cacheDirs) {
+    if (!existsSync(cacheDir)) continue;
     const dirs = readdirSync(cacheDir)
       .filter((d) => d.startsWith("chromium_headless_shell-"))
       .sort()
       .reverse();
     for (const d of dirs) {
-      const candidate = join(
-        cacheDir,
-        d,
-        "chrome-headless-shell-mac-arm64",
-        "chrome-headless-shell",
-      );
-      if (existsSync(candidate)) return candidate;
+      for (const archDir of archDirs) {
+        const candidate = join(cacheDir, d, archDir, "chrome-headless-shell");
+        if (existsSync(candidate)) return candidate;
+      }
     }
   }
   const sysChrome =
@@ -28,6 +35,14 @@ function findChromium(): string | undefined {
 }
 
 const executablePath = findChromium();
+const launchEnv = executablePath
+  ? {
+      ...(process.env as Record<string, string>),
+      LD_LIBRARY_PATH: [dirname(executablePath), process.env.LD_LIBRARY_PATH]
+        .filter(Boolean)
+        .join(":"),
+    }
+  : undefined;
 
 export default defineConfig({
   server: { fs: { allow: [".", realpathSync("node_modules")] } },
@@ -47,7 +62,9 @@ export default defineConfig({
     browser: {
       enabled: true,
       headless: true,
-      provider: playwright({ launchOptions: { executablePath } }),
+      provider: playwright({
+        launchOptions: { executablePath, env: launchEnv },
+      }),
       instances: [{ browser: "chromium" }],
     },
   },

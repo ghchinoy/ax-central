@@ -29,3 +29,8 @@ func (s *Shell) terminateStreamProcess(_ string, cmd *exec.Cmd) {
 	_ = cmd.Process.Signal(os.Interrupt)
 	_ = cmd.Process.Kill()
 }
+
+func (s *Shell) terminateSessionProcess(_ string, cmd *exec.Cmd) {
+	_ = exec.Command("taskkill", "/T", "/F", "/PID", strconv.Itoa(cmd.Process.Pid)).Run()
+	_ = cmd.Process.Kill()
+}

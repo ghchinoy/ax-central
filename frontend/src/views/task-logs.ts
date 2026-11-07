@@ -196,7 +196,7 @@ export class AxTaskLogs extends LitElement {
       const c3 = shq(`ax.${t.atespace}.${t.name}`);
       void window.studio.stream({
         id,
-        commandLine: `if container inspect ${c1} >/dev/null 2>&1; then container logs -f ${c1} 2>&1; elif container inspect ${c2} >/dev/null 2>&1; then container logs -f ${c2} 2>&1; elif container inspect ${c3} >/dev/null 2>&1; then container logs -f ${c3} 2>&1; else echo "Container ${c1} is not running yet (phase: ${t.phase}). Resume the task to stream guest logs."; fi`,
+        commandLine: `if container inspect ${c1} >/dev/null 2>&1; then container logs -f ${c1} 2>&1; elif container inspect ${c2} >/dev/null 2>&1; then container logs -f ${c2} 2>&1; elif container inspect ${c3} >/dev/null 2>&1; then container logs -f ${c3} 2>&1; else printf 'Container %s is not running yet (phase: %s). Resume the task to stream guest logs.\\n' ${c1} ${shq(t.phase)}; fi`,
       });
     } else {
       const kc = `kubectl${ctx === "kube" ? "" : ` --context ${shq(ctx)}`}`;

@@ -24,7 +24,7 @@ import {
   type Template,
   withID,
 } from "./model/designer";
-import { shortImage } from "./model/resources";
+import { isSafeResourceName, shortImage } from "./model/resources";
 import { SECTIONS, type Section, type Store } from "./model/store";
 import { ToolError } from "./registry";
 
@@ -61,8 +61,6 @@ function reqStr(args: Record<string, unknown>, key: string): string {
   return v;
 }
 
-const SAFE_RESOURCE_RE = /^[a-zA-Z0-9][a-zA-Z0-9._/-]{0,127}$/;
-
 /**
  * Validates resource/context/atespace identifiers passed via WebMCP tools to
  * prevent CLI argument injection (mcp-auditor §2: reject leading '-' or shell metacharacters).
@@ -72,7 +70,7 @@ export function reqSafeName(
   key: string,
 ): string {
   const v = reqStr(args, key);
-  if (v.startsWith("-") || !SAFE_RESOURCE_RE.test(v)) {
+  if (!isSafeResourceName(v)) {
     throw new ToolError(
       `Invalid ${key} "${v}": must be a valid resource identifier and must not start with "-".`,
     );

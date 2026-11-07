@@ -24,6 +24,7 @@ import {
   type TaskDetail,
   comparePhase,
   errorSummary,
+  isSafeResourceName,
   parseContexts,
   parseModels,
   parseTaskYAML,
@@ -314,10 +315,14 @@ export class Store extends EventTarget {
     const a: string[] = [];
     if (this.state.context === "local") {
       a.push("--server", this.state.settings.localServer || "localhost:8090");
-    } else if (this.state.context) {
+    } else if (this.state.context && isSafeResourceName(this.state.context)) {
       a.push("--context", this.state.context);
     }
-    a.push("-a", this.state.atespace || "default");
+    const ates =
+      this.state.atespace && isSafeResourceName(this.state.atespace)
+        ? this.state.atespace
+        : "default";
+    a.push("-a", ates);
     return a;
   }
 
@@ -412,7 +417,7 @@ export class Store extends EventTarget {
   }
 
   private async loadDetails(): Promise<void> {
-    const tasks = this.state.tasks;
+    const tasks = this.state.tasks.filter((t) => isSafeResourceName(t.name));
     const results = await Promise.all(
       tasks.map((t) => this.ax(["get", "task", t.name])),
     );
@@ -423,33 +428,55 @@ export class Store extends EventTarget {
       else if (this.state.details[t.id])
         details[t.id] = this.state.details[t.id];
     });
+    const safeWorkspaces = this.state.workspaces.filter((w) =>
+      isSafeResourceName(w.name),
+    );
     const wsResults = await Promise.all(
-      this.state.workspaces.map((w) => this.ax(["get", "workspace", w.name])),
+      safeWorkspaces.map((w) => this.ax(["get", "workspace", w.name])),
     );
-    const workspaces = this.state.workspaces.map((w, i) =>
-      wsResults[i]?.ok ? parseWorkspaceYAML(wsResults[i].stdout, w) : w,
-    );
+    const wsMap = new Map<string, AXWorkspace>();
+    safeWorkspaces.forEach((w, i) => {
+      if (wsResults[i]?.ok) {
+        wsMap.set(w.id, parseWorkspaceYAML(wsResults[i].stdout, w));
+      }
+    });
+    const workspaces = this.state.workspaces.map((w) => wsMap.get(w.id) ?? w);
     this.set({ details, workspaces });
   }
 
-  suspend = (t: AXTask) =>
-    this.perform(`Suspend ${t.name}`, ["suspend", "task", t.name]);
-  resume = (t: AXTask) =>
-    this.perform(`Resume ${t.name}`, ["resume", "task", t.name]);
-  remove = (kind: string, name: string) =>
-    this.perform(`Delete ${kind} ${name}`, ["delete", kind, name]);
+  private invalidNameResult(name: string): Result {
+    return result({
+      status: 1,
+      stdout: "",
+      stderr: `Error: invalid resource identifier "${name}"`,
+    });
+  }
+
+  suspend = async (t: AXTask): Promise<Result> =>
+    isSafeResourceName(t.name)
+      ? this.perform(`Suspend ${t.name}`, ["suspend", "task", t.name])
+      : this.invalidNameResult(t.name);
+  resume = async (t: AXTask): Promise<Result> =>
+    isSafeResourceName(t.name)
+      ? this.perform(`Resume ${t.name}`, ["resume", "task", t.name])
+      : this.invalidNameResult(t.name);
+  remove = async (kind: string, name: string): Promise<Result> =>
+    isSafeResourceName(kind) && isSafeResourceName(name)
+      ? this.perform(`Delete ${kind} ${name}`, ["delete", kind, name])
+      : this.invalidNameResult(name);
   apply = (yaml: string) =>
     this.perform("Apply manifest", ["apply", "-f", "-"], yaml);
 
   async resumeAll(tasks?: AXTask[]): Promise<void> {
-    const targets =
+    const targets = (
       tasks ??
       this.state.tasks.filter(
         (t) =>
           t.phase === "suspended" ||
           t.phase === "failed" ||
           t.phase === "completed",
-      );
+      )
+    ).filter((t) => isSafeResourceName(t.name));
     if (!targets.length) return;
     const results = await Promise.all(
       targets.map((t) => this.ax(["resume", "task", t.name])),
@@ -465,11 +492,12 @@ export class Store extends EventTarget {
   }
 
   async suspendAll(tasks?: AXTask[]): Promise<void> {
-    const targets =
+    const targets = (
       tasks ??
       this.state.tasks.filter(
         (t) => t.phase === "running" || t.phase === "pending",
-      );
+      )
+    ).filter((t) => isSafeResourceName(t.name));
     if (!targets.length) return;
     const results = await Promise.all(
       targets.map((t) => this.ax(["suspend", "task", t.name])),
@@ -485,7 +513,7 @@ export class Store extends EventTarget {
   }
 
   async makeDefault(ctx: string): Promise<void> {
-    if (!this.state.axConfig) return;
+    if (!this.state.axConfig || !isSafeResourceName(ctx)) return;
     const r = result(
       await window.studio.run({
         program: this.state.settings.axPath,

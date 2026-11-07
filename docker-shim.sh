@@ -8,7 +8,7 @@
 # - `buildx build --push` builds a podman manifest and pushes it, recording
 #   the pushed digest so `buildx imagetools inspect` can report it.
 
-digests=${TMPDIR:-/tmp}/ax-central-buildx
+digests=${XDG_CACHE_HOME:-${HOME:-/tmp}/.cache}/ax-central/buildx
 digestfile() { printf '%s/%s' "$digests" "$(printf '%s' "$1" | tr '/:@' '___')"; }
 tls() { case "$1" in localhost:*|127.0.0.1:*) echo --tls-verify=false ;; esac; }
 
@@ -32,7 +32,7 @@ buildx_build() {
   fi
   podman manifest rm "$tag" >/dev/null 2>&1 || podman rmi "$tag" >/dev/null 2>&1 || true
   podman build ${plat:+--platform "$plat"} --manifest "$tag" "$@" || exit
-  mkdir -p "$digests"
+  mkdir -p -m 0700 "$digests"
   exec podman manifest push --all $(tls "$tag") --digestfile "$(digestfile "$tag")" "$tag" "docker://$tag"
 }
 
@@ -84,7 +84,7 @@ case "$1" in
       a=$1; shift; n=$((n - 1))
       case "$a" in -q|--quiet) ;; *) set -- "$@" "$a" ;; esac
     done
-    mkdir -p "$digests"
+    mkdir -p -m 0700 "$digests"
     exec podman push $(tls "$ref") --digestfile "$(digestfile "$ref")" "$@" ;;
   inspect)
     ref=$(lastarg "$@")

@@ -20,7 +20,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, unlinkSync } from "no
 import { createServer } from "node:http";
 import { createRequire } from "node:module";
 import { homedir } from "node:os";
-import { dirname, extname, join, resolve } from "node:path";
+import { dirname, extname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -32,20 +32,27 @@ const { chromium } = require("playwright");
 
 function findChromium() {
   if (process.env.CHROMIUM_PATH) return process.env.CHROMIUM_PATH;
-  const cacheDir = join(homedir(), "Library", "Caches", "ms-playwright");
-  if (existsSync(cacheDir)) {
+  const cacheDirs = [
+    join(homedir(), "Library", "Caches", "ms-playwright"),
+    join(homedir(), ".cache", "ms-playwright"),
+  ];
+  const archDirs = [
+    "chrome-headless-shell-mac-arm64",
+    "chrome-headless-shell-mac-x64",
+    "chrome-headless-shell-linux64",
+    "chrome-headless-shell-linux-arm64",
+  ];
+  for (const cacheDir of cacheDirs) {
+    if (!existsSync(cacheDir)) continue;
     const dirs = readdirSync(cacheDir)
       .filter((d) => d.startsWith("chromium_headless_shell-"))
       .sort()
       .reverse();
     for (const d of dirs) {
-      const candidate = join(
-        cacheDir,
-        d,
-        "chrome-headless-shell-mac-arm64",
-        "chrome-headless-shell",
-      );
-      if (existsSync(candidate)) return candidate;
+      for (const archDir of archDirs) {
+        const candidate = join(cacheDir, d, archDir, "chrome-headless-shell");
+        if (existsSync(candidate)) return candidate;
+      }
     }
   }
   const sysChrome =
@@ -63,11 +70,20 @@ const MIME = {
 };
 
 function startStaticServer(rootDir) {
+  const resolvedRoot = resolve(rootDir);
   return new Promise((resolveServer) => {
     const srv = createServer((req, res) => {
       const urlPath = (req.url ?? "/").split("?")[0];
       const rel = urlPath === "/" ? "/index.html" : urlPath;
-      const filePath = join(rootDir, rel);
+      const filePath = resolve(resolvedRoot, "." + rel);
+      if (
+        filePath !== resolvedRoot &&
+        !filePath.startsWith(resolvedRoot + sep)
+      ) {
+        res.writeHead(403);
+        res.end("Forbidden");
+        return;
+      }
       if (!existsSync(filePath)) {
         res.writeHead(404);
         res.end("Not found");
