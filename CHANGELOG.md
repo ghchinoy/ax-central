@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and [Common Changelog](https://common-changelog.org/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-11-06
+
+### Added
+- **Multi-Layer Task Log Filters (`<ax-task-logs>`):** Added `All`, `Guest`, `Substrate`, and `OTel` segmented filter controls (plus a `runsc` toggle for low-level gVisor boot logs) so operators can inspect container output alongside Substrate actor lifecycle, RPC, and checkpoint events (`[ax_central-qbp.2]`).
+- **Live Sandbox Telemetry Strip:** `<ax-task-logs>` extracts real-time cgroup memory working set and peak MiB, CPU time, RustFS volume snapshot checkpoint latency, and captured OpenTelemetry trace counts from Substrate worker records (`[ax_central-qbp.2]`).
+- **Interactive OpenTelemetry Trace Waterfall (`<ax-task-logs>` & `<ax-task-inspector>`):** Log lines carrying an OpenTelemetry `trace_id` render a compact inline `trace:<shortId>` badge that opens an inline span waterfall merging in-sandbox Genkit spans (`genkit otel span`) with in-cluster Jaeger v2 distributed traces (`otel-system/deploy/jaeger` `/api/v3/traces/<id>`) across `ateapi`, `atelet`, and `ateworker-gvisor` (`[ax_central-qbp.1]`, `[ax_central-qbp.3]`).
+- **Linux WebKit2GTK 4.1 Auto-Configuration & Crostini Walkthrough:** `Makefile` and `hack/doctor.sh` (`--install wails`) detect Debian 13 (`trixie`) `webkit2gtk-4.1` and pass `-tags webkit2_41` automatically during `make dev`, `make build`, and `make wails-build`, accompanied by Walkthrough B in `docs/tutorials/quickstart-local-stack.md` (`[ax_central-xkx]`, `[ax_central-7bg]`).
+
+### Fixed
+- **Compact Inline Trace Badges:** Styled `.trace-pill` with `white-space: nowrap`, `height: 15px`, and `line-height: 1` so inline trace badges do not inherit multi-line `pre-wrap` expansion from `.task-log-line` (`[ax_central-qbp.3]`).
+
 ## [0.2.0] - 2026-11-06
 
 ### Added
@@ -47,5 +58,6 @@ _Initial release._
 ### Security
 - **WebMCP Argument-Injection & STDIO MCP Guards:** Enforced `reqSafeName` validation across all WebMCP tool inputs to reject leading `-` CLI flags, added `mcp-auditor` warnings for shell wrappers in Workspace STDIO MCP servers, and added `make security` (`npm audit` + Go readability checks) (`[ax-central-hw9]`).
 
+[0.3.0]: https://github.com/ghchinoy/ax-central/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/ghchinoy/ax-central/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/ghchinoy/ax-central/releases/tag/v0.1.0

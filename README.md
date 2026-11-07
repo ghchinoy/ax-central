@@ -1,7 +1,7 @@
 # AX Central
 
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-0.2.0-0b57d0.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.3.0-0b57d0.svg)](CHANGELOG.md)
 [![Go](https://img.shields.io/badge/Go-1.26+-00ADD8.svg)](go.mod)
 [![WebMCP](https://img.shields.io/badge/WebMCP-document.modelContext-188038.svg)](docs/reference/cli-and-webmcp-tools.md)
 
