@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and [Common Changelog](https://common-changelog.org/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.1] - 2026-11-08
+
+### Changed
+- **Delta-Cached `fetchDetails()` & Adaptive 1.5s Polling (`store.ts`, `shell.go`):** Memoized `Shell.Which()` binary resolution in `shell.go` and cached `TaskDetail` by `(id, phase, workerIP, actor)` and `AXWorkspace` by `(id, gitCount, mcpCount)` in `store.ts` so steady-state polling skips redundant `ax get task` / `ax get workspace` subprocesses while scaling the refresh cadence to 1.5s whenever any task is `running`, `pending`, or `terminating` (`[ax-central-dt0.1]`).
+- **Bounded Kubernetes Log Tail & Scale-to-Zero Log Preservation (`<ax-task-logs>`):** Preserved captured guest log lines across `Running` $\leftrightarrow$ `Suspended` scale-to-zero transitions for the same task with fingerprint deduplication, switched stopped local container inspection to non-following `container logs`, and bounded Kubernetes worker-pool log streaming to `--since=1h --tail=500` (`[ax-central-dt0.2]`).
+
 ## [0.4.0] - 2026-11-08
 
 ### Added
@@ -71,6 +77,7 @@ _Initial release._
 ### Security
 - **WebMCP Argument-Injection & STDIO MCP Guards:** Enforced `reqSafeName` validation across all WebMCP tool inputs to reject leading `-` CLI flags, added `mcp-auditor` warnings for shell wrappers in Workspace STDIO MCP servers, and added `make security` (`npm audit` + Go readability checks) (`[ax-central-hw9]`).
 
+[0.4.1]: https://github.com/ghchinoy/ax-central/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/ghchinoy/ax-central/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/ghchinoy/ax-central/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/ghchinoy/ax-central/compare/v0.1.0...v0.2.0

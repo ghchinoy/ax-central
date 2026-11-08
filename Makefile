@@ -16,7 +16,7 @@
 
 .PHONY: help build wails-build dev run-frontend test test-go test-frontend lint security check smoke-local smoke-crostini diagrams screenshots format doctor bootstrap version release-darwin clean
 
-VERSION := $(shell jq -r .info.productVersion wails.json 2>/dev/null || echo 0.4.0)
+VERSION := $(shell jq -r .info.productVersion wails.json 2>/dev/null || echo 0.4.1)
 LDFLAGS := -s -w -X main.appVersion=$(VERSION)
 WAILS := $(shell command -v wails 2>/dev/null || echo $(HOME)/go/bin/wails)
 WAILS_TAGS := $(shell if [ "$$(uname -s)" = "Linux" ] && command -v pkg-config >/dev/null 2>&1 && pkg-config --exists webkit2gtk-4.1 && ! pkg-config --exists webkit2gtk-4.0; then echo "-tags webkit2_41"; fi)
