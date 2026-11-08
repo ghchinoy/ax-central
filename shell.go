@@ -111,18 +111,20 @@ type activeSession struct {
 
 // Shell manages subprocess execution, streaming pipelines, and interactive sessions.
 type Shell struct {
-	pathEnv  string
-	mu       sync.Mutex
-	streams  map[string]*exec.Cmd
-	sessions map[string]*activeSession
+	pathEnv    string
+	mu         sync.Mutex
+	whichCache map[string]string
+	streams    map[string]*exec.Cmd
+	sessions   map[string]*activeSession
 }
 
 // NewShell initializes a Shell with the user's login PATH merged with common tool directories.
 func NewShell() *Shell {
 	return &Shell{
-		pathEnv:  buildLoginPath(),
-		streams:  make(map[string]*exec.Cmd),
-		sessions: make(map[string]*activeSession),
+		pathEnv:    buildLoginPath(),
+		whichCache: make(map[string]string),
+		streams:    make(map[string]*exec.Cmd),
+		sessions:   make(map[string]*activeSession),
 	}
 }
 
@@ -205,14 +207,25 @@ func ExpandPath(p string) string {
 }
 
 // Which resolves program against the Shell's PATH, returning "" when not found.
+// Positive lookups are memoized in s.whichCache to avoid repeated os.Stat fan-out during polling.
 func (s *Shell) Which(program string) string {
 	if program == "" {
 		return ""
 	}
-	program = ExpandPath(program)
-	if strings.ContainsAny(program, `/\`) {
-		if info, err := os.Stat(program); err == nil && !info.IsDir() {
-			return program
+	s.mu.Lock()
+	if cached, ok := s.whichCache[program]; ok {
+		s.mu.Unlock()
+		return cached
+	}
+	s.mu.Unlock()
+
+	expanded := ExpandPath(program)
+	if strings.ContainsAny(expanded, `/\`) {
+		if info, err := os.Stat(expanded); err == nil && !info.IsDir() {
+			s.mu.Lock()
+			s.whichCache[program] = expanded
+			s.mu.Unlock()
+			return expanded
 		}
 		return ""
 	}
@@ -227,8 +240,11 @@ func (s *Shell) Which(program string) string {
 	}
 	for _, dir := range strings.Split(s.pathEnv, sep) {
 		for _, ext := range exts {
-			candidate := filepath.Join(dir, program+ext)
+			candidate := filepath.Join(dir, expanded+ext)
 			if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
+				s.mu.Lock()
+				s.whichCache[program] = candidate
+				s.mu.Unlock()
 				return candidate
 			}
 		}

@@ -170,6 +170,8 @@ export class Store extends EventTarget {
   private timer: ReturnType<typeof setTimeout> | null = null;
   private startPromise: Promise<void> | null = null;
   private nextID = 1;
+  private detailSig = new Map<string, string>();
+  private wsSig = new Map<string, string>();
   private askedTask = new URLSearchParams(location.search).get("task");
   private askedTerminal = new URLSearchParams(location.search).has("terminal");
 
@@ -222,10 +224,16 @@ export class Store extends EventTarget {
 
   private loop = async (): Promise<void> => {
     await this.refresh();
-    this.timer = setTimeout(
-      this.loop,
-      Math.max(1.5, this.state.settings.refreshInterval) * 1000,
+    const hasActive = this.state.tasks.some(
+      (t) =>
+        t.phase === "running" ||
+        t.phase === "pending" ||
+        t.phase === "terminating",
     );
+    const intervalSec = hasActive
+      ? 1.5
+      : Math.max(1.5, this.state.settings.refreshInterval);
+    this.timer = setTimeout(this.loop, intervalSec * 1000);
   };
 
   setSection(section: Section): void {
@@ -243,6 +251,8 @@ export class Store extends EventTarget {
     if (patch.context) {
       localStorage.setItem(CONTEXT_KEY, patch.context);
     }
+    this.detailSig.clear();
+    this.wsSig.clear();
     this.set({
       ...patch,
       tasks: [],
@@ -456,7 +466,7 @@ export class Store extends EventTarget {
         : this.state.workspaces;
       const counts: Record<string, number> = {};
       for (const t of tasks) counts[t.phase] = (counts[t.phase] ?? 0) + 1;
-      const fetched = await this.fetchDetails(tasks, workspaces);
+      const fetched = await this.fetchDetails(tasks, workspaces, force);
       this.set({
         connectionError: null,
         tasks: same(tasks, this.state.tasks) ? this.state.tasks : tasks,
@@ -477,31 +487,53 @@ export class Store extends EventTarget {
   private async fetchDetails(
     taskList: AXTask[],
     workspaceList: AXWorkspace[],
+    force = false,
   ): Promise<{
     details: Record<string, TaskDetail>;
     workspaces: AXWorkspace[];
   }> {
     const tasks = taskList.filter((t) => isSafeResourceName(t.name));
-    const results = await Promise.all(
-      tasks.map((t) => this.ax(["get", "task", t.name])),
+    const taskSigFor = (t: AXTask) =>
+      `${t.phase}:${t.workerIP ?? ""}:${t.actor ?? ""}`;
+    const tasksToFetch = tasks.filter(
+      (t) =>
+        force ||
+        !this.state.details[t.id] ||
+        this.detailSig.get(t.id) !== taskSigFor(t) ||
+        t.id === this.state.selectedTaskID,
     );
-    const details: Record<string, TaskDetail> = {};
-    tasks.forEach((t, i) => {
+    const results = await Promise.all(
+      tasksToFetch.map((t) => this.ax(["get", "task", t.name])),
+    );
+    const fetchedTaskMap = new Map<string, TaskDetail>();
+    tasksToFetch.forEach((t, i) => {
       const r = results[i];
-      if (r.ok) details[t.id] = parseTaskYAML(r.stdout);
-      else if (this.state.details[t.id])
-        details[t.id] = this.state.details[t.id];
+      if (r?.ok) {
+        fetchedTaskMap.set(t.id, parseTaskYAML(r.stdout));
+        this.detailSig.set(t.id, taskSigFor(t));
+      }
     });
+    const details: Record<string, TaskDetail> = {};
+    for (const t of tasks) {
+      const d = fetchedTaskMap.get(t.id) ?? this.state.details[t.id];
+      if (d) details[t.id] = d;
+    }
+
     const safeWorkspaces = workspaceList.filter((w) =>
       isSafeResourceName(w.name),
     );
+    const wsSigFor = (w: AXWorkspace) => `${w.gitCount}:${w.mcpCount}`;
+    const wsToFetch = safeWorkspaces.filter(
+      (w) => force || this.wsSig.get(w.id) !== wsSigFor(w),
+    );
     const wsResults = await Promise.all(
-      safeWorkspaces.map((w) => this.ax(["get", "workspace", w.name])),
+      wsToFetch.map((w) => this.ax(["get", "workspace", w.name])),
     );
     const wsMap = new Map<string, AXWorkspace>();
-    safeWorkspaces.forEach((w, i) => {
+    wsToFetch.forEach((w, i) => {
       if (wsResults[i]?.ok) {
         wsMap.set(w.id, parseWorkspaceYAML(wsResults[i].stdout, w));
+        this.wsSig.set(w.id, wsSigFor(w));
       }
     });
     const workspaces = workspaceList.map((w) => wsMap.get(w.id) ?? w);

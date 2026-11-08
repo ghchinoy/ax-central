@@ -463,6 +463,50 @@ describe("WebMCP ToolHost & AX tools", () => {
       "triage_agent",
     );
 
+    // Verify Running -> Suspended scale-to-zero transition preserves log lines & deduplicates re-read lines (ax-central-dt0.2)
+    store.set({
+      tasks: store.state.tasks.map((t) =>
+        t.name === "gemini-a1b2c3"
+          ? { ...t, phase: "suspended", workerIP: undefined }
+          : t,
+      ),
+    });
+    await el.updateComplete;
+    await new Promise((r) => setTimeout(r, 80));
+    await (logsEl as unknown as { updateComplete: Promise<boolean> })
+      .updateComplete;
+    const preservedLines = [
+      ...logsEl.shadowRoot!.querySelectorAll(".task-log-line"),
+    ].map((n) => n.textContent);
+    expect(preservedLines.filter((l) => l === "Linux aarch64")).toHaveLength(1);
+    expect(logsEl.shadowRoot!.querySelector(".waterfall")).not.toBeNull();
+    // Restore gemini-a1b2c3 to running for subsequent steps
+    store.set({
+      tasks: store.state.tasks.map((t) =>
+        t.name === "gemini-a1b2c3"
+          ? { ...t, phase: "running", workerIP: "10.244.0.12" }
+          : t,
+      ),
+    });
+
+    // Verify delta-cached fetchDetails() skips redundant get task / get workspace calls on steady-state poll (ax-central-dt0.1)
+    await store.refresh(true);
+    let detailFetchCount = 0;
+    const baseRun = window.studio.run;
+    window.studio.run = async (req) => {
+      if (
+        req.args.includes("get") &&
+        (req.args.includes("task") || req.args.includes("workspace"))
+      ) {
+        detailFetchCount++;
+      }
+      return baseRun(req);
+    };
+    store.set({ selectedTaskID: null });
+    await store.refresh(false);
+    expect(detailFetchCount).toBe(0);
+    window.studio.run = baseRun;
+
     const parsedFields = parseSlogFields(
       'time=2026-11-07T00:00:00Z level=INFO msg="genkit otel span" agent=coder_agent span="read_file" duration_ms=14.2',
     );

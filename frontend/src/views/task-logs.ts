@@ -160,6 +160,8 @@ export class AxTaskLogs extends LitElement {
   private offStore: (() => void) | null = null;
   private lastKey = "";
   private lastTaskID = "";
+  private nextLineID = 1;
+  private seenLineFingerprints = new Set<string>();
 
   override connectedCallback(): void {
     super.connectedCallback();
@@ -314,8 +316,13 @@ export class AxTaskLogs extends LitElement {
     if (!ctx) return;
 
     ensureStudioBridge();
-    this.lines = [];
-    if (taskID !== this.lastTaskID) {
+    const switchedTask = taskID !== this.lastTaskID;
+    if (switchedTask || force) {
+      this.lines = [];
+      this.nextLineID = 1;
+      this.seenLineFingerprints = new Set();
+    }
+    if (switchedTask) {
       this.lastTaskID = taskID;
       this.telemetry = {};
       this.genkitSpans = new Map();
@@ -327,7 +334,6 @@ export class AxTaskLogs extends LitElement {
     this.error = "";
 
     const id = `task-logs-${++streams}`;
-    let next = 1;
     let pending: LogLine[] = [];
     let flush: ReturnType<typeof setTimeout> | null = null;
     let other = "";
@@ -364,8 +370,14 @@ export class AxTaskLogs extends LitElement {
         }
       }
 
+      const fp = `${effectiveSource}:${time}:${text}`;
+      if (!switchedTask && !force && this.seenLineFingerprints.has(fp)) {
+        return;
+      }
+      this.seenLineFingerprints.add(fp);
+
       pending.push({
-        id: next++,
+        id: this.nextLineID++,
         time,
         text,
         source: effectiveSource,
@@ -577,16 +589,18 @@ export class AxTaskLogs extends LitElement {
       const c1 = shq(`ate-${ates}-${sanitizeContainerPart(t.actor || t.name)}`);
       const c2 = shq(`ate-${ates}-${sanitizeContainerPart(t.name)}`);
       const c3 = shq(`ax.${t.atespace}.${t.name}`);
+      const followFlag =
+        t.phase === "running" || t.phase === "pending" ? "-f " : "";
       void window.studio.stream({
         id,
-        commandLine: `if container inspect ${c1} >/dev/null 2>&1; then container logs -f ${c1} 2>&1; elif container inspect ${c2} >/dev/null 2>&1; then container logs -f ${c2} 2>&1; elif container inspect ${c3} >/dev/null 2>&1; then container logs -f ${c3} 2>&1; else printf 'Container %s is not running yet (phase: %s). Resume the task to stream guest logs.\\n' ${c1} ${shq(t.phase)}; fi`,
+        commandLine: `if container inspect ${c1} >/dev/null 2>&1; then container logs ${followFlag}${c1} 2>&1; elif container inspect ${c2} >/dev/null 2>&1; then container logs ${followFlag}${c2} 2>&1; elif container inspect ${c3} >/dev/null 2>&1; then container logs ${followFlag}${c3} 2>&1; else printf 'Container %s is not running yet (phase: %s). Resume the task to stream guest logs.\\n' ${c1} ${shq(t.phase)}; fi`,
       });
     } else {
       const kc = `kubectl${ctx === "kube" ? "" : ` --context ${shq(ctx)}`}`;
       const namespaces = `$(${kc} get pods -A -l ate.dev/worker-pool -o jsonpath='{range .items[*]}{.metadata.namespace}{"\\n"}{end}' | sort -u)`;
       void window.studio.stream({
         id,
-        commandLine: `for ns in ${namespaces}; do ${kc} -n "$ns" logs -l ate.dev/worker-pool --all-containers --prefix=false --ignore-errors -f --since=24h --tail=-1 --max-log-requests=50 2>&1 & done; wait`,
+        commandLine: `for ns in ${namespaces}; do ${kc} -n "$ns" logs -l ate.dev/worker-pool --all-containers --prefix=false --ignore-errors -f --since=1h --tail=500 --max-log-requests=50 2>&1 & done; wait`,
         env: store.envForContext,
       });
     }
