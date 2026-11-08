@@ -30,7 +30,7 @@ You can also target individual components with `hack/doctor.sh --install <target
 
 | Target | Action Performed by `hack/doctor.sh` |
 | :--- | :--- |
-| `wails` | Installs Wails CLI `v2.17.1` (`go install github.com/wailsapp/wails/v2/cmd/wails@v2.17.1`) and, on Linux/Crostini, `libgtk-3-dev` + `libwebkit2gtk-4.1-dev`. |
+| `wails` | Installs the latest Wails CLI (`go install github.com/wailsapp/wails/v2/cmd/wails@latest`) and, on Linux/Crostini, `libgtk-3-dev` + `libwebkit2gtk-4.1-dev`. |
 | `container-daemon` | Runs `container system start` to boot the macOS Apple `container` service. |
 | `ax-repo` | Clones `ghchinoy/ax` (or fetches branch `feat/ate-local-apple-container` into `~/projects/ax`) so `cmd/ate-local` and `examples/ate_local/local-stack.sh` are present. |
 | `ate-local-bins` | Compiles `.ax-local/bin/{ax,ate-local,ax-server}` and cross-compiles `.ax-local/bin/linux_arm64/ax-task-runner`. |

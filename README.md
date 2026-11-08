@@ -118,7 +118,7 @@ Full documentation lives under [`docs/`](docs/index.md), organized into the four
 
 ### Prerequisites
 * **OS**: macOS (`darwin/arm64` or `darwin/amd64`), Linux (`linux/amd64` with `libgtk-3-dev` and `libwebkit2gtk-4.1-dev`), or Windows (`windows/amd64` with WebView2)
-* **Go** `1.26+` and **Wails CLI** `v2.17.1+` (`go install github.com/wailsapp/wails/v2/cmd/wails@v2.17.1` or `bash hack/doctor.sh --install wails`)
+* **Go** `1.26+` and **Wails CLI** `v2+` (`go install github.com/wailsapp/wails/v2/cmd/wails@latest` or `bash hack/doctor.sh --install wails`)
 * **Node.js** `22.23.4+` and `npm`
 * **Compute substrate**: **Apple `container` CLI** (`/usr/local/bin/container`, `brew install --cask container && container system start`) on Apple Silicon macOS for the Tier-A local stack, or **Podman / Docker + `kind` + `kubectl`** across macOS, Linux, and Windows for Tier-B Kubernetes clusters
 * **Optional (diagrams & screenshots)**: `graphviz` (`dot`, `gvpr`) and `webp` (`cwebp`) via `brew install graphviz webp`

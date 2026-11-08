@@ -76,8 +76,8 @@ install_target() {
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends libgtk-3-dev libwebkit2gtk-4.1-dev pkg-config build-essential
         fi
       fi
-      echo "==> Installing Wails CLI v2.17.1..."
-      go install github.com/wailsapp/wails/v2/cmd/wails@v2.17.1
+      echo "==> Installing latest Wails CLI..."
+      go install github.com/wailsapp/wails/v2/cmd/wails@latest
       if [[ -x "$HOME/go/bin/wails" && -w /usr/local/bin ]]; then
         ln -sf "$HOME/go/bin/wails" /usr/local/bin/wails || true
       elif [[ -x "$HOME/go/bin/wails" ]] && sudo -n true 2>/dev/null; then
