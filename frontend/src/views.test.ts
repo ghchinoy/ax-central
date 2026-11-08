@@ -30,6 +30,7 @@ import {
   tokenize,
   tokenizeYAML,
 } from "./model/designer";
+import { isSafeWorkspacePath, moveSteps, portable } from "./model/move";
 import {
   isSafeResourceName,
   parseContexts,
@@ -49,9 +50,16 @@ import { store } from "./model/store";
 import { parseJaegerTraceJSON, parseSlogFields } from "./views/task-logs";
 
 beforeEach(() => {
+  localStorage.clear();
   window.studio = createFallbackStudio();
   store.setSection("overview");
-  store.set({ selectedTaskID: null, webmcpOpen: false, settingsOpen: false });
+  store.set({
+    context: "local",
+    atespace: "default",
+    selectedTaskID: null,
+    webmcpOpen: false,
+    settingsOpen: false,
+  });
 });
 
 afterEach(() => {
@@ -119,6 +127,45 @@ describe("resources & designer models", () => {
     const ateLocal = template("ate-local");
     expect(ateLocal.image).toBe("debian:12");
     expect(ateLocal.debug).toBe(true);
+
+    const antigravity = template("antigravity");
+    expect(antigravity.image).toContain(
+      "ghcr.io/rakyll/ax-images/antigravity@sha256:8025a987",
+    );
+    expect(antigravity.wsName).toBe("cachetools-antigravity");
+    expect(antigravity.repos[0]?.repo).toBe(
+      "https://github.com/tkem/cachetools.git",
+    );
+
+    const claudeManaged = template("claude-managed-agents");
+    const claudeYaml = generate(claudeManaged, true);
+    expect(claudeYaml).toContain(
+      "ghcr.io/rakyll/ax-images/claude-managed-agents@sha256:1a532d86",
+    );
+    expect(claudeYaml).toContain('model: "claude-opus-5-5"');
+
+    expect(isSafeWorkspacePath("/workspace")).toBe(true);
+    expect(isSafeWorkspacePath("/workspace/sub-dir_1")).toBe(true);
+    expect(isSafeWorkspacePath("../etc/passwd")).toBe(false);
+    expect(isSafeWorkspacePath("/workspace;rm -rf /")).toBe(false);
+
+    const movedCluster = portable(
+      'apiVersion: ax.io/v1alpha1\nkind: Task\nmetadata:\n  name: t1\n  atespace: default\n  createTime: "2026-11-01T00:00:00Z"\nspec:\n  image: debian:12\n  debug: true\nstatus:\n  phase: Running\n',
+      { context: "kind-ax", atespace: "staging" },
+    );
+    expect(movedCluster).toContain("atespace: staging");
+    expect(movedCluster).not.toContain("createTime");
+    expect(movedCluster).not.toContain("status:");
+    expect(movedCluster).not.toContain("debian:12");
+
+    const movedLocal = portable(
+      "apiVersion: ax.io/v1alpha1\nkind: Task\nmetadata:\n  name: t1\nspec:\n  image: debian:12\n  debug: true\n",
+      { context: "local", atespace: "staging" },
+    );
+    expect(movedLocal).toContain("image: debian:12");
+    expect(
+      moveSteps({ context: "local", atespace: "staging" }, false),
+    ).toHaveLength(6);
 
     const genkit = template("genkit-apple-container");
     expect(genkit.image).toBe("ax-agent-local:latest");
@@ -544,7 +591,93 @@ describe("WebMCP ToolHost & AX tools", () => {
       "default",
     ]);
 
-    // 6. WebMCP task lifecycle actions (suspend -> resume -> delete)
+    // 6. WebMCP task lifecycle actions (suspend -> resume -> move -> delete) + context persistence & showTask
+    store.setScope({ context: "kind-ax" });
+    expect(localStorage.getItem("ax-central.context")).toBe("kind-ax");
+    store.set({ context: "" });
+    await store.loadContexts();
+    expect(store.state.context).toBe("kind-ax");
+    store.setScope({ context: "local", atespace: "default" });
+    await store.refresh(true);
+
+    store.showTask("shell-task-01");
+    expect(store.state.selectedTaskID).toBe("default/shell-task-01");
+    expect(store.state.section).toBe("overview");
+
+    let pipedFrom: string[] = [];
+    let pipedTo: string[] = [];
+    const origRun = window.studio.run;
+    window.studio.run = async (req) => {
+      if (
+        req.args.includes("-a") &&
+        req.args[req.args.indexOf("-a") + 1] === "staging" &&
+        req.args.includes("get") &&
+        req.args.includes("task")
+      ) {
+        if (pipedFrom.length === 0 && !req.stdin) {
+          // First check before apply returns not found; after apply returns Running/Suspended
+        }
+      }
+      return origRun(req);
+    };
+    let destTaskCreated = false;
+    let destTaskSuspended = false;
+    window.studio.run = async (req) => {
+      const atesIdx = req.args.indexOf("-a");
+      const ates = atesIdx >= 0 ? req.args[atesIdx + 1] : "default";
+      if (ates === "staging") {
+        if (req.args.includes("apply")) {
+          destTaskCreated = true;
+          return {
+            status: 0,
+            stdout: "task/gemini-a1b2c3 created\n",
+            stderr: "",
+          };
+        }
+        if (req.args.includes("suspend")) {
+          destTaskSuspended = true;
+          return { status: 0, stdout: "suspended\n", stderr: "" };
+        }
+        if (req.args.includes("resume")) {
+          destTaskSuspended = false;
+          return { status: 0, stdout: "resumed\n", stderr: "" };
+        }
+        if (req.args.includes("get") && req.args.includes("task")) {
+          if (!destTaskCreated) {
+            return { status: 1, stdout: "", stderr: "not found" };
+          }
+          return {
+            status: 0,
+            stdout: `apiVersion: ax.io/v1alpha1\nkind: Task\nmetadata:\n  name: gemini-a1b2c3\nstatus:\n  phase: ${destTaskSuspended ? "Suspended" : "Running"}\n`,
+            stderr: "",
+          };
+        }
+      }
+      return origRun(req);
+    };
+    window.studio.pipe = async (req) => {
+      pipedFrom = req.from;
+      pipedTo = req.to;
+      return { status: 0, stdout: "", stderr: "" };
+    };
+
+    const moved = await el.host.call(
+      "move_task",
+      {
+        name: "gemini-a1b2c3",
+        target_context: "local",
+        target_atespace: "staging",
+        delete_original: false,
+      },
+      sig,
+    );
+    expect(moved.ok).toBe(true);
+    expect(moved.target_atespace).toBe("staging");
+    expect(pipedFrom).toContain("tar");
+    expect(pipedTo).toContain(
+      'chmod -R u+w "$1" 2>/dev/null || true; exec tar xf - -C "$1"',
+    );
+
     const susp = await el.host.call(
       "suspend_task",
       { name: "gemini-a1b2c3" },
@@ -739,5 +872,28 @@ describe("Luminous 0.15–0.19 patterns & WCAG 2 A/AA in ax-central", () => {
         );
       }
     }
+
+    // Open <ax-move-task-modal> and verify WCAG 2 A/AA compliance
+    store.setSection("overview");
+    await el.updateComplete;
+    const overviewEl = root.querySelector("ax-overview")!;
+    await (overviewEl as unknown as { updateComplete: Promise<boolean> })
+      .updateComplete;
+    const moveBtn = overviewEl.shadowRoot!.querySelector<HTMLButtonElement>(
+      'button[aria-label="Move gemini-a1b2c3"]',
+    );
+    expect(moveBtn).not.toBeNull();
+    moveBtn?.click();
+    await (overviewEl as unknown as { updateComplete: Promise<boolean> })
+      .updateComplete;
+    const moveModal =
+      overviewEl.shadowRoot!.querySelector("ax-move-task-modal");
+    expect(moveModal).not.toBeNull();
+    await (moveModal as unknown as { updateComplete: Promise<boolean> })
+      .updateComplete;
+    const modalAxe = await axe.run(document.body, {
+      runOnly: ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"],
+    });
+    expect(modalAxe.violations, "move-task-modal axe violations").toEqual([]);
   });
 });

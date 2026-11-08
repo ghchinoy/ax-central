@@ -101,6 +101,11 @@ func (a *App) Run(req RunRequest) CommandResult {
 	return a.shell.Run(req)
 }
 
+// Pipe connects two subprocesses via an OS pipe and returns the combined exit status, stdout, and stderr.
+func (a *App) Pipe(req PipeRequest) CommandResult {
+	return a.shell.Pipe(req)
+}
+
 // Stream starts a line-streamed shell command and emits "stream:line" and "stream:exit" events.
 func (a *App) Stream(req StreamRequest) {
 	a.shell.Stream(

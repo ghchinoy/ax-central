@@ -142,10 +142,7 @@ export class AxDesigner extends LitElement {
   private viewCreatedInActivity(): void {
     const name = this.createdTaskName;
     if (!name) return;
-    const ates = designer.draft.atespace || store.state.atespace || "default";
-    const t = store.state.tasks.find((x) => x.name === name);
-    store.set({ selectedTaskID: t?.id ?? `${ates}/${name}` });
-    store.setSection("overview");
+    store.showTask(name);
   }
 
   private startDrag = (e: MouseEvent): void => {

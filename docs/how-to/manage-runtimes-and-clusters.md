@@ -30,6 +30,7 @@ You can also target individual components with `hack/doctor.sh --install <target
 
 | Target | Action Performed by `hack/doctor.sh` |
 | :--- | :--- |
+| `wails` | Installs Wails CLI `v2.17.1` (`go install github.com/wailsapp/wails/v2/cmd/wails@v2.17.1`) and, on Linux/Crostini, `libgtk-3-dev` + `libwebkit2gtk-4.1-dev`. |
 | `container-daemon` | Runs `container system start` to boot the macOS Apple `container` service. |
 | `ax-repo` | Clones `ghchinoy/ax` (or fetches branch `feat/ate-local-apple-container` into `~/projects/ax`) so `cmd/ate-local` and `examples/ate_local/local-stack.sh` are present. |
 | `ate-local-bins` | Compiles `.ax-local/bin/{ax,ate-local,ax-server}` and cross-compiles `.ax-local/bin/linux_arm64/ax-task-runner`. |
@@ -68,7 +69,7 @@ When `kind`, `kubectl`, and either `docker` or `podman` are installed, the **New
 
 On machines where `podman` is installed without `docker`, `shell.go` writes the embedded `docker-shim.sh` script to `~/Library/Application Support/ax-central/bin/docker` and prepends it to `PATH` with `KIND_EXPERIMENTAL_PROVIDER=podman`. The shim handles three Podman-specific differences required by `hack/setup-e2e-kind.sh` and Agent Substrate:
 1. Appends `--tls-verify=false` when pushing or pulling against `localhost:5001` or `127.0.0.1:*` local registries.
-2. Emulates `docker buildx build --push` and `docker buildx imagetools inspect` using `podman build`, `podman push --digestfile`, and `podman manifest inspect`.
+2. Emulates `docker buildx build --push` (including `--metadata-file` JSON output) and `docker buildx imagetools inspect` using `podman build`, `podman manifest push --digestfile`, and `podman manifest inspect`.
 3. Caches pushed manifest digests across Podman layer recompression so `docker inspect --format='{{index .RepoDigests 0}}'` returns the exact registry digest required by Kubernetes pods.
 
 > **Podman memory requirement:** Building Agent Substrate with `ko` inside a Podman VM requires at least 6 GiB of memory. If `clusters.ts` detects a Podman machine with less than 6144 MiB, it displays a warning with the exact resize command:
@@ -82,8 +83,10 @@ On machines where `podman` is installed without `docker`, `shell.go` writes the 
 
 1. Click the **Settings** gear icon in the top-right toolbar (or press **`⌘,`**).
 2. Configure:
-   * **`ax` binary**: Path or command name for the `ax` CLI (defaults to `ax`; when targeting the `local` context, `store.ts` automatically prefers `<repoPath>/.ax-local/bin/ax` when built).
+   * **`ax` binary**: Path or command name for the `ax` CLI (defaults to `ax`; `store.ts` automatically prefers `<repoPath>/.ax-local/bin/ax` when targeting `local` and `<repoPath>/.tmp/bin/ax` or `<repoPath>/bin/ax` when targeting Kubernetes clusters).
    * **AX repository**: Path to your `ax` checkout (defaults to `~/projects/ax`).
    * **AX Experiments**: Path to your `ax-experiments` checkout (defaults to `~/projects/ax-experiments`).
+   * **Local `AX_SERVER`**: Address of the local `ax-server` (defaults to `localhost:8090`).
    * **Refresh**: Polling interval in seconds (`2s` to `30s`).
-3. Use the **Context** dropdown and **Atespace** input in the top toolbar to switch between `local` and `kind-*` contexts or between atespaces (`default`, `team-a`, etc.) without mutating your shell's global configuration.
+   * **Prerequisite Doctor**: Shortcut button in the Settings modal footer that opens the Clusters Doctor card.
+3. Use the **Context** dropdown and **Atespace** input in the top toolbar to switch between `local` and `kind-*` contexts or between atespaces (`default`, `staging`, etc.) without mutating your shell's global configuration. AX Central persists your last-selected context in `localStorage` (`ax-central.context`).

@@ -15,19 +15,20 @@ Open **Deploy** (`⌘3`) and click **Templates** in the top-right toolbar:
 | :--- | :--- | :--- | :--- |
 | *(Built-in)* | **Blank** | `blank` | Empty task scaffold (`my-task-<id>`). |
 | *(Built-in)* | **Shell** | `simple` | Basic `sh -c 'echo $ENVIRONMENT'` task with `ENVIRONMENT=test`. |
-| `ax-images` | **Gemini Agent** | `gemini` | `ghcr.io/rakyll/ax-images/gemini` pinned by digest with `humanize` Git workspace and `GEMINI_API_KEY`. |
-| `ax-images` | **OpenAI Agent** | `openai` | `ghcr.io/rakyll/ax-images/openai` pinned by digest with `OPENAI_API_KEY`. |
-| `ax-images` | **Claude Agent** | `claude-managed-agents` | `ghcr.io/rakyll/ax-images/claude-managed-agents` pinned by digest with `ANTHROPIC_API_KEY`. |
-| `ax-images` | **GitHub Actions Runner** | `github-actions` | Self-hosted GitHub Actions runner task (`GITHUB_TOKEN`). |
-| `ax-experiments` | **Apple Container (ate-local)** | `ate-local` | Native `arm64` `debian:12` task for the local Apple `container` stack (`examples/ate_local/task-local.yaml`). |
-| `ax-experiments` | **Genkit Triage Agent (Apple Container)** | `genkit-apple-container` | Declarative Dotprompt `triage_agent` on `ax-agent-local:latest` bound to `demo-workspace` with `README.md`, `retry_test.go`, `.agents/skills/incident-runbook/SKILL.md`, and the `telemetry` STDIO MCP server (`python3 /workspace/tools/incident_mcp.py`). |
-| `ax-experiments` | **Swarm Code Reviewer (04-review-panel)** | `swarm-reviewer` | Security Auditor agent from `~/projects/ax-experiments/swarm/04-review-panel.sh` on `ax-agent-local:latest`. |
+| `ax-images` | **Antigravity Agent** | `antigravity` | `ghcr.io/rakyll/ax-images/antigravity` (`v0.5.0`) pinned by digest with `tkem/cachetools` Git workspace and `GEMINI_API_KEY`. |
+| `ax-images` | **Gemini Agent** | `gemini` | `ghcr.io/rakyll/ax-images/gemini` (`v0.5.0`) pinned by digest with `tkem/cachetools` Git workspace and `GEMINI_API_KEY`. |
+| `ax-images` | **OpenAI Agent** | `openai` | `ghcr.io/rakyll/ax-images/openai` (`v0.5.0`) pinned by digest with `OPENAI_API_KEY`. |
+| `ax-images` | **Claude Agent** | `claude-managed-agents` | `ghcr.io/rakyll/ax-images/claude-managed-agents` (`v0.5.0`) pinned by digest with nested `agent: { model, system }` and `ANTHROPIC_API_KEY`. |
+| `ax-images` | **GitHub Actions Runner** | `github-actions` | Self-hosted GitHub Actions runner task (`v0.5.0`, `GITHUB_TOKEN`). |
+| `ax-experiments` | **Apple Container Task (ate-local)** | `ate-local` | Native `arm64` `debian:12` task for the local Apple `container` stack (`examples/ate_local/task-local.yaml`). |
+| `ax-experiments` | **Genkit Incident Triage (ate-local)** | `genkit-apple-container` | Declarative Dotprompt `triage_agent` on `ax-agent-local:latest` bound to `demo-workspace` with `README.md`, `retry_test.go`, `.agents/skills/incident-runbook/SKILL.md`, `tools/incident_mcp.py`, and the `telemetry` STDIO MCP server (`python3 /workspace/tools/incident_mcp.py`). |
+| `ax-experiments` | **Swarm Code Reviewer (ate-local)** | `swarm-reviewer` | Security Auditor agent from `~/projects/ax-experiments/swarm/04-review-panel.sh` on `ax-agent-local:latest`. |
 
 ---
 
 ## 2. Configure Task, Environment, Workspace, and Model
 
-The visual editor on the left side of **Deploy** is divided into five cards that update the **Composition Diagram** and **Generated YAML** in real time:
+The visual editor on the left side of **Deploy** is divided into six cards that update the **Composition Diagram** and **Generated YAML** in real time:
 
 1. **Task**: Set the RFC 1123 task `Name`, `Atespace`, container `Image`, and `Command` (tokenized into an `argv` array).
 2. **Environment**:
@@ -40,6 +41,7 @@ The visual editor on the left side of **Deploy** is divided into five cards that
    * **Existing**: Binds an existing workspace in the current atespace.
    * **New**: Emits a `kind: Workspace` document alongside the `Task`, including **Git repos**, inline **Files** (such as `AGENTS.md` or `.agents/skills/*/SKILL.md`), and **MCP servers** (HTTP `endpoint` or STDIO `command` + `args`).
    * *Security check (`mcp-auditor`)*: If a STDIO MCP server uses shell wrappers (`sh -c`, `bash -c`) or shell metacharacters, `designer.ts` surfaces a warning in the footer.
+6. **Model**: Toggle **Include a Model resource** to emit a `kind: Model` document (`provider`, `model`, `apiKeySecretRef`, `maxTokens`) alongside the `Workspace` and `Task`.
 
 ### Switch Between Visual Form and Raw YAML
 * Toggle **Edit raw** in the YAML header to edit the multi-document YAML manifest directly inside `<textarea class="yaml-raw">` with a synchronized line-number gutter.
@@ -49,7 +51,7 @@ The visual editor on the left side of **Deploy** is divided into five cards that
 
 ## 3. Automate AX Central via WebMCP (`document.modelContext`)
 
-AX Central registers 16 operational tools with the browser's `document.modelContext` API (when running in a WebMCP-enabled host) and mirrors them in its built-in `ToolHost` registry.
+AX Central registers 17 operational tools with the browser's `document.modelContext` API (when running in a WebMCP-enabled host) and mirrors them in its built-in `ToolHost` registry.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="../screenshots/webmcp-dark.webp">

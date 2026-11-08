@@ -104,6 +104,7 @@ let tabCount = 0;
 
 const SETTINGS_KEY = "ax-central.settings";
 const SECTION_KEY = "ax-central.section";
+const CONTEXT_KEY = "ax-central.context";
 
 function loadSettings(): Settings {
   const defaults: Settings = {
@@ -239,6 +240,9 @@ export class Store extends EventTarget {
   }
 
   setScope(patch: { context?: string; atespace?: string }): void {
+    if (patch.context) {
+      localStorage.setItem(CONTEXT_KEY, patch.context);
+    }
     this.set({
       ...patch,
       tasks: [],
@@ -250,6 +254,13 @@ export class Store extends EventTarget {
       connectionError: null,
     });
     void this.refresh();
+  }
+
+  showTask(name: string | null): void {
+    this.askedTask = name;
+    this.askedTerminal = false;
+    this.set(this.takeAskedTask(this.state.tasks));
+    this.setSection("overview");
   }
 
   async loadContexts(): Promise<void> {
@@ -315,6 +326,10 @@ export class Store extends EventTarget {
           : [...contexts, localCtx];
     }
     const asked = new URLSearchParams(location.search).get("context");
+    const saved = localStorage.getItem(CONTEXT_KEY);
+    const last = saved
+      ? contexts.find((c) => c.name === saved)?.name
+      : undefined;
     const defaultCtx =
       contexts.find((c) => c.isCurrent)?.name ||
       (info.os !== "darwin"
@@ -323,13 +338,13 @@ export class Store extends EventTarget {
       "local";
     this.set({
       contexts,
-      context: this.state.context || asked || defaultCtx,
+      context: this.state.context || asked || last || defaultCtx,
     });
   }
 
-  get effectiveAxPath(): string {
+  axPathFor(context: string): string {
     if (this.state.settings.axPath === "ax") {
-      if (this.state.context === "local" && this.state.localAxBin) {
+      if (context === "local" && this.state.localAxBin) {
         return this.state.localAxBin;
       }
       if (this.state.repoAxBin) {
@@ -339,30 +354,40 @@ export class Store extends EventTarget {
     return this.state.settings.axPath;
   }
 
-  get scope(): string[] {
+  get effectiveAxPath(): string {
+    return this.axPathFor(this.state.context);
+  }
+
+  scopeFor(context: string, atespace: string): string[] {
     const a: string[] = [];
-    if (this.state.context === "local") {
+    if (context === "local") {
       a.push("--server", this.state.settings.localServer || "localhost:8090");
-    } else if (this.state.context && isSafeResourceName(this.state.context)) {
-      a.push("--context", this.state.context);
+    } else if (context && isSafeResourceName(context)) {
+      a.push("--context", context);
     }
     const ates =
-      this.state.atespace && isSafeResourceName(this.state.atespace)
-        ? this.state.atespace
-        : "default";
+      atespace && isSafeResourceName(atespace) ? atespace : "default";
     a.push("-a", ates);
     return a;
   }
 
-  get envForContext(): Record<string, string> | undefined {
-    if (this.state.context === "local") {
+  get scope(): string[] {
+    return this.scopeFor(this.state.context, this.state.atespace);
+  }
+
+  envFor(context: string): Record<string, string> | undefined {
+    if (context === "local") {
       return { AX_SERVER: this.state.settings.localServer || "localhost:8090" };
     }
-    const kc = this.state.kindKubeconfigs[this.state.context];
+    const kc = this.state.kindKubeconfigs[context];
     if (kc) {
       return { KUBECONFIG: kc };
     }
     return undefined;
+  }
+
+  get envForContext(): Record<string, string> | undefined {
+    return this.envFor(this.state.context);
   }
 
   async ax(args: string[], stdin?: string): Promise<Result> {

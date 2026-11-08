@@ -19,10 +19,10 @@ From the `ax-central` repository root, run the prerequisite doctor:
 make doctor
 ```
 
-On an Apple Silicon Mac configured for the local stack, `hack/doctor.sh` reports `ok` across the five Tier-A checks:
+On an Apple Silicon Mac configured for the local stack, `hack/doctor.sh` reports `ok` across the Tier-A checks:
 
 ```text
-  [✓] Go toolchain                     go1.25.5 (/usr/local/go/bin/go)
+  [✓] Go & Wails toolchain             go1.26.0 + wails (/Users/you/go/bin/wails)
   [✓] Apple container runtime          /usr/local/bin/container (daemon running)
   [✓] AX repo (ate-local variant)      /Users/you/projects/ax (branch: feat/ate-local-apple-container)
   [✓] ate-local & arm64 task runner    /Users/you/projects/ax/.ax-local/bin ready
@@ -50,7 +50,7 @@ make wails-build && open "build/bin/AX Central.app"
 ## Step 2: Start the Local Stack in Clusters (`⌘5`)
 
 1. Click **Clusters** in the left sidebar (or press **`⌘5`**).
-2. Inspect the **Prerequisite Doctor** card on the right. If any dependency needs repair, click **Bootstrap All** (or the individual **Fix** button) to stream the build in the bottom console.
+2. Inspect the **Prerequisite Doctor** card on the right. If any dependency needs repair, click **Bootstrap All** (or the individual **Repair** button) to stream the build in the bottom console.
 3. Locate the **Apple Container (`ate-local`)** stack card:
    * If the status badge reads **Stopped**, click **Start**.
    * The bottom **Output** console opens and streams `examples/ate_local/local-stack.sh up`.
@@ -58,7 +58,7 @@ make wails-build && open "build/bin/AX Central.app"
      * **AX Control Plane** (`ax-server` listening on `127.0.0.1:8090`)
      * **ate-local Substrate** (`ate-local` gRPC server listening on `127.0.0.1:50051`)
      * **Apple Container & PostgreSQL** (`ax-local-postgres` on `127.0.0.1:5432` and active `ate-*` microVMs)
-4. Click **Open in Central** on the card. AX Central sets the active context in the top toolbar to **`local`** and routes `ax` CLI commands to `localhost:8090` using `<repoPath>/.ax-local/bin/ax`.
+4. Click **Open Activity** on the card. AX Central sets the active context in the top toolbar to **`local`** and routes `ax` CLI commands to `localhost:8090` using `<repoPath>/.ax-local/bin/ax`.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="../screenshots/clusters-dark.webp">
@@ -72,9 +72,9 @@ make wails-build && open "build/bin/AX Central.app"
 1. Click **Deploy** in the sidebar (or press **`⌘3`**).
 2. Open the **Templates** dropdown in the top-right header. AX Central groups templates into three categories:
    * **Built-in**: `Blank`, `Shell`
-   * **`ax-images`**: `Gemini Agent`, `OpenAI Agent`, `Claude Agent`, `GitHub Actions Runner`
-   * **`ax-experiments`**: `Apple Container (ate-local)`, `Genkit Triage Agent (Apple Container)`, `Swarm Code Reviewer (04-review-panel)`
-3. Choose **`Apple Container (ate-local)`**:
+   * **`ax-images`**: `Antigravity Agent`, `Gemini Agent`, `OpenAI Agent`, `Claude Agent`, `GitHub Actions Runner`
+   * **`ax-experiments`**: `Apple Container Task (ate-local)`, `Genkit Incident Triage (ate-local)`, `Swarm Code Reviewer (ate-local)`
+3. Choose **`Apple Container Task (ate-local)`**:
    * In the **Task** section on the left, set **Command** to:
      ```sh
      sh -c 'echo "Hello from microVM: $(uname -sm)" && sleep 300'
@@ -101,7 +101,7 @@ make wails-build && open "build/bin/AX Central.app"
 4. Click the task row to open the slide-in **Task Inspector** on the right:
    * **Lifecycle bar**: `Created`, `Workspace`, and `Ready` light up green.
    * **Sandbox fields**: Displays `Image: debian:12`, `Workspace: my-workspace -> /workspace`, `Worker IP: 192.168.64.x`, `Actor`, and `Debug: on`.
-   * **Logs (`<ax-task-logs>`)**: Streams live container output via `container logs -f ate-default-local-task-...`. Click the maximize icon in the logs footer to open the full-screen log modal, and press `Esc` to close it.
+   * **Logs & Telemetry (`<ax-task-logs>`)**: Streams live container output via `container logs -f ate-default-local-task-...` with `All`, `Guest`, `Substrate`, and `OTel` filter tabs, a live sandbox telemetry strip, and interactive OpenTelemetry trace waterfalls (`trace:<shortId>`). Click the maximize icon in the logs footer to open the full-screen log modal, and press `Esc` to close it.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="../screenshots/activity-dark.webp">
@@ -207,7 +207,7 @@ When you run AX Central on a Chromebook Linux VM (Crostini / Bagels KVM with Deb
 1. In **Activity** (`Ctrl+1`), Agent Substrate allocates a `gVisor` (`runsc`) sandbox on `ax-workers` (`10.244.0.x`), mounts `/workspace`, and transitions the task to **`Running`**.
 2. Click the task row to open the **Task Inspector**:
    * **Conditions**: Shows `WorkspaceReady: True (SetupComplete)` and `Ready: True (TaskRunning)`.
-   * **Logs**: `<ax-task-logs>` streams the guest container output from `kubectl logs -l ate.dev/worker-pool` using the auto-discovered `KUBECONFIG`.
+   * **Logs & Telemetry**: `<ax-task-logs>` streams the guest container and Substrate worker output from `kubectl logs -l ate.dev/worker-pool` using the auto-discovered `KUBECONFIG`, extracting cgroup CPU/RAM, RustFS checkpoint latency, and Jaeger v2 + Genkit OpenTelemetry trace waterfalls.
 3. Click **Terminal** in the Task Inspector (or press **`Ctrl+4`**) to open an interactive `ax ssh` tab routed through `atenet-router` mTLS into the `gVisor` sandbox:
    ```sh
    uname -a

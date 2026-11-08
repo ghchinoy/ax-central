@@ -35,7 +35,9 @@ import {
   repoName,
   shortImage,
   shortName,
+  validateLabel,
 } from "../model/resources";
+import { type MoveStep, moveSteps, moveTask } from "../model/move";
 import { store } from "../model/store";
 import { sharedStyles } from "../shared-styles";
 import "./task-logs";
@@ -72,7 +74,11 @@ interface TaskAction {
   danger?: boolean;
 }
 
-export function actionsForTask(t: AXTask, onDelete: () => void): TaskAction[] {
+export function actionsForTask(
+  t: AXTask,
+  onDelete: () => void,
+  onMove?: () => void,
+): TaskAction[] {
   const a: TaskAction[] = [];
   if (
     t.phase === "suspended" ||
@@ -99,6 +105,13 @@ export function actionsForTask(t: AXTask, onDelete: () => void): TaskAction[] {
       run: () => store.openTerminal(t),
     });
   }
+  if (onMove) {
+    a.push({
+      label: "Move…",
+      iconName: "arrow-right-left",
+      run: onMove,
+    });
+  }
   a.push({
     label: "Delete…",
     iconName: "trash",
@@ -114,6 +127,7 @@ export class AxTaskInspector extends LitElement {
   @state() private showManifest = false;
   @state() private copied = false;
   @state() private confirmDelete: AXTask | null = null;
+  @state() private movingTask: AXTask | null = null;
   private offStore: (() => void) | null = null;
 
   override connectedCallback(): void {
@@ -275,7 +289,11 @@ export class AxTaskInspector extends LitElement {
                     ${this.renderLifecycle(t.phase, detail?.conditions ?? [])}
 
                     <div class="row" style="flex-wrap:wrap">
-                      ${actionsForTask(t, () => (this.confirmDelete = t)).map(
+                      ${actionsForTask(
+                        t,
+                        () => (this.confirmDelete = t),
+                        () => (this.movingTask = t),
+                      ).map(
                         (a) => html`
                           <button
                             class="btn small ${a.danger ? "danger" : ""}"
@@ -431,6 +449,16 @@ export class AxTaskInspector extends LitElement {
           ? renderDeleteTaskModal(this.confirmDelete, () => {
               this.confirmDelete = null;
             })
+          : nothing
+      }
+      ${
+        this.movingTask
+          ? html`<ax-move-task-modal
+              .task=${this.movingTask}
+              .onClose=${() => {
+                this.movingTask = null;
+              }}
+            ></ax-move-task-modal>`
           : nothing
       }
     `;
@@ -644,11 +672,376 @@ function renderDeleteTaskModal(task: AXTask, onClose: () => void) {
   `;
 }
 
+@customElement("ax-move-task-modal")
+export class AxMoveTaskModal extends LitElement {
+  @property({ attribute: false }) task!: AXTask;
+  @property({ attribute: false }) onClose: () => void = () => {};
+
+  @state() private context = "";
+  @state() private atespace = "";
+  @state() private deleteOriginal = false;
+  @state() private clearUnpinnedImage = true;
+  @state() private steps: MoveStep[] | null = null;
+  @state() private done = false;
+  @state() private initializedFor = "";
+
+  override willUpdate(): void {
+    if (this.task && this.initializedFor !== this.task.id) {
+      this.initializedFor = this.task.id;
+      const s = store.state;
+      const otherCtx = s.contexts.find((c) => c.name !== s.context)?.name;
+      this.context = otherCtx || s.context || "local";
+      this.atespace = otherCtx
+        ? s.atespace
+        : s.atespace === "default"
+          ? "staging"
+          : "default";
+      this.deleteOriginal = false;
+      this.clearUnpinnedImage = true;
+      this.steps = null;
+      this.done = false;
+    }
+  }
+
+  private async runMove(): Promise<void> {
+    const target = {
+      context: this.context,
+      atespace: this.atespace.trim() || "default",
+      clearUnpinnedImage: this.clearUnpinnedImage,
+    };
+    this.steps = moveSteps(target, this.deleteOriginal);
+    this.done = await moveTask(
+      this.task,
+      target,
+      this.deleteOriginal,
+      (next) => {
+        this.steps = [...next];
+      },
+    );
+  }
+
+  private showMoved(): void {
+    const targetCtx = this.context;
+    const targetAtes = this.atespace.trim() || "default";
+    const taskName = this.task.name;
+    this.onClose();
+    store.setScope({ context: targetCtx, atespace: targetAtes });
+    store.showTask(taskName);
+  }
+
+  override render() {
+    const s = store.state;
+    const detail = s.details[this.task.id];
+    const busy =
+      this.steps !== null &&
+      !this.done &&
+      !this.steps.some((st) => st.state === "failed");
+    const trimmedAtes = this.atespace.trim() || "default";
+    const atesErr = validateLabel(trimmedAtes);
+    const samePlace =
+      this.context === s.context && trimmedAtes === this.task.atespace;
+    const noDebug = detail !== undefined && !detail.debug;
+    const unpinnedToCluster =
+      this.context !== "local" &&
+      Boolean(detail?.image && !detail.image.includes("@sha256:"));
+    const canStart = !busy && !this.done && !atesErr && !samePlace && !noDebug;
+
+    return html`
+      <div
+        class="modal-backdrop"
+        @mousedown=${() => {
+          if (!busy) this.onClose();
+        }}
+      >
+        <div
+          class="modal card fade-in move-modal"
+          role="dialog"
+          aria-label="Move task"
+          @mousedown=${(e: Event) => e.stopPropagation()}
+        >
+          <h3>Move task “${this.task.name}”</h3>
+          <p class="muted" style="margin:0 0 14px;line-height:1.5">
+            Recreates the task at the destination and copies
+            <code>/workspace</code> over <code>ax ssh</code>. Processes restart
+            against the copied files.
+          </p>
+
+          ${
+            noDebug
+              ? html`
+                  <div class="move-warn">
+                    ${icon("alert", 15, { color: "var(--orange)" })}
+                    <span
+                      >Moving copies files over <code>ax ssh</code>, which
+                      requires <code>spec.debug: true</code> on this task.</span
+                    >
+                  </div>
+                `
+              : nothing
+          }
+
+          <div class="move-form">
+            <div class="move-field">
+              <label class="move-label" for="move-context">Context</label>
+              <select
+                id="move-context"
+                class="input"
+                ?disabled=${busy || this.done}
+                .value=${this.context}
+                @change=${(e: Event) => {
+                  this.context = (e.target as HTMLSelectElement).value;
+                }}
+              >
+                ${s.contexts.map(
+                  (c) => html`
+                    <option
+                      value=${c.name}
+                      ?selected=${c.name === this.context}
+                    >
+                      ${
+                        c.name === "local"
+                          ? "local (Apple container)"
+                          : shortName(c.name)
+                      }
+                    </option>
+                  `,
+                )}
+              </select>
+            </div>
+
+            <div class="move-field">
+              <label class="move-label" for="move-atespace">Atespace</label>
+              <input
+                id="move-atespace"
+                class="input mono ${atesErr ? "invalid" : ""}"
+                ?disabled=${busy || this.done}
+                .value=${this.atespace}
+                placeholder="default"
+                @input=${(e: Event) => {
+                  this.atespace = (e.target as HTMLInputElement).value;
+                }}
+              />
+            </div>
+          </div>
+
+          ${
+            atesErr
+              ? html`<div
+                  class="caption"
+                  style="color:var(--danger);margin-bottom:8px"
+                >
+                  Atespace ${atesErr}
+                </div>`
+              : samePlace && !this.steps
+                ? html`<div class="caption faint" style="margin-bottom:8px">
+                    Choose a different context or atespace.
+                  </div>`
+                : nothing
+          }
+          ${
+            unpinnedToCluster
+              ? html`
+                  <label class="move-check">
+                    <input
+                      type="checkbox"
+                      ?disabled=${busy || this.done}
+                      .checked=${this.clearUnpinnedImage}
+                      @change=${(e: Event) => {
+                        this.clearUnpinnedImage = (
+                          e.target as HTMLInputElement
+                        ).checked;
+                      }}
+                    />
+                    <span>
+                      Use destination default runner image (recommended:
+                      <code>${detail?.image}</code> has no
+                      <code>@sha256:</code> digest)
+                    </span>
+                  </label>
+                `
+              : nothing
+          }
+
+          <label class="move-check">
+            <input
+              type="checkbox"
+              ?disabled=${busy || this.done}
+              .checked=${this.deleteOriginal}
+              @change=${(e: Event) => {
+                this.deleteOriginal = (e.target as HTMLInputElement).checked;
+              }}
+            />
+            <span>
+              Delete original in
+              <strong>${s.context} / ${this.task.atespace}</strong> after copy
+              (otherwise suspend it)
+            </span>
+          </label>
+
+          ${
+            this.steps
+              ? html`
+                  <div class="move-steps" aria-live="polite">
+                    ${this.steps.map((st) => {
+                      const ic: IconName =
+                        st.state === "done"
+                          ? "circle-check"
+                          : st.state === "failed"
+                            ? "circle-x"
+                            : st.state === "running"
+                              ? "loader"
+                              : "circle-dashed";
+                      const col =
+                        st.state === "done"
+                          ? "var(--green)"
+                          : st.state === "failed"
+                            ? "var(--danger)"
+                            : st.state === "running"
+                              ? "var(--primary)"
+                              : "var(--text-3)";
+                      return html`
+                        <div class="move-step ${st.state}">
+                          ${icon(ic, 14, {
+                            color: col,
+                            className: st.state === "running" ? "spin" : "",
+                          })}
+                          <div class="col" style="gap:2px;min-width:0;flex:1">
+                            <span>${st.title}</span>
+                            ${
+                              st.detail
+                                ? html`<span class="caption selectable"
+                                    >${st.detail}</span
+                                  >`
+                                : nothing
+                            }
+                          </div>
+                        </div>
+                      `;
+                    })}
+                  </div>
+                `
+              : nothing
+          }
+
+          <div class="row" style="justify-content:flex-end;margin-top:16px">
+            <button
+              class="btn"
+              ?disabled=${busy}
+              @click=${() => this.onClose()}
+            >
+              ${this.done ? "Close" : "Cancel"}
+            </button>
+            ${
+              this.done
+                ? html`
+                    <button
+                      class="btn primary"
+                      @click=${() => this.showMoved()}
+                    >
+                      Show in ${shortName(this.context)} / ${trimmedAtes}
+                    </button>
+                  `
+                : html`
+                    <button
+                      class="btn primary"
+                      ?disabled=${!canStart}
+                      @click=${() => void this.runMove()}
+                    >
+                      ${icon("arrow-right-left", 13)}
+                      ${this.steps ? "Retry" : "Move"}
+                    </button>
+                  `
+            }
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  static override styles = [
+    sharedStyles,
+    css`
+      .move-modal {
+        width: 480px;
+        max-width: calc(100vw - 32px);
+      }
+      .move-warn {
+        display: flex;
+        align-items: flex-start;
+        gap: 8px;
+        padding: 10px 12px;
+        margin-bottom: 12px;
+        border-radius: var(--radius-s);
+        background: color-mix(
+          in srgb,
+          var(--orange) 12%,
+          var(--surface-bright)
+        );
+        border: 1px solid color-mix(in srgb, var(--orange) 35%, var(--border));
+        font-size: 12.5px;
+      }
+      .move-form {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+        margin-bottom: 10px;
+      }
+      .move-field {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+      .move-label {
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        color: var(--text-3);
+      }
+      .move-check {
+        display: flex;
+        align-items: flex-start;
+        gap: 8px;
+        font-size: 12.5px;
+        color: var(--on-surface-variant);
+        margin: 6px 0;
+        cursor: pointer;
+      }
+      .move-check input {
+        margin-top: 2px;
+      }
+      .move-steps {
+        margin-top: 12px;
+        padding: 10px 12px;
+        border-radius: var(--radius-s);
+        background: var(--surface-container);
+        border: 1px solid var(--border);
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        font-size: 12.5px;
+      }
+      .move-step {
+        display: flex;
+        align-items: flex-start;
+        gap: 8px;
+      }
+      .move-step.pending {
+        color: var(--text-3);
+      }
+      .move-step.failed .caption {
+        color: var(--danger);
+      }
+    `,
+  ];
+}
+
 @customElement("ax-overview")
 export class AxOverview extends LitElement {
   @state() private sort: Sort = { key: "state", dir: 1 };
   @state() private menu: { task: AXTask; x: number; y: number } | null = null;
   @state() private confirmTask: AXTask | null = null;
+  @state() private movingTask: AXTask | null = null;
   @state() private confirmWorkspace: AXWorkspace | null = null;
 
   private offStore: (() => void) | null = null;
@@ -1257,9 +1650,15 @@ export class AxOverview extends LitElement {
                                   class="task-row-actions"
                                   @click=${(e: Event) => e.stopPropagation()}
                                 >
-                                  ${actionsForTask(t, () => {
-                                    this.confirmTask = t;
-                                  }).map(
+                                  ${actionsForTask(
+                                    t,
+                                    () => {
+                                      this.confirmTask = t;
+                                    },
+                                    () => {
+                                      this.movingTask = t;
+                                    },
+                                  ).map(
                                     (a) => html`
                                       <button
                                         class="btn ghost small icon ${
@@ -1302,9 +1701,15 @@ export class AxOverview extends LitElement {
                   )}px;top:${Math.min(this.menu.y, window.innerHeight - 160)}px"
                   @mousedown=${(e: Event) => e.stopPropagation()}
                 >
-                  ${actionsForTask(this.menu.task, () => {
-                    this.confirmTask = this.menu?.task ?? null;
-                  }).map(
+                  ${actionsForTask(
+                    this.menu.task,
+                    () => {
+                      this.confirmTask = this.menu?.task ?? null;
+                    },
+                    () => {
+                      this.movingTask = this.menu?.task ?? null;
+                    },
+                  ).map(
                     (a) => html`
                       <button
                         class="menu-item"
@@ -1328,6 +1733,16 @@ export class AxOverview extends LitElement {
             ? renderDeleteTaskModal(this.confirmTask, () => {
                 this.confirmTask = null;
               })
+            : nothing
+        }
+        ${
+          this.movingTask
+            ? html`<ax-move-task-modal
+                .task=${this.movingTask}
+                .onClose=${() => {
+                  this.movingTask = null;
+                }}
+              ></ax-move-task-modal>`
             : nothing
         }
         ${
@@ -1617,7 +2032,7 @@ export class AxOverview extends LitElement {
         color: var(--on-surface-variant);
       }
       .col-actions {
-        width: 110px;
+        width: 136px;
       }
       .col-repos {
         width: 24%;

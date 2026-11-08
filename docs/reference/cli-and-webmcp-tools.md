@@ -1,24 +1,24 @@
 # Reference: CLI, Shortcuts, and WebMCP Tools
 
-This reference documents AX Central's `Makefile` targets, `hack/doctor.sh` CLI flags and JSON output schema, keyboard shortcuts, and all 16 WebMCP tools registered in `frontend/src/tools.ts`.
+This reference documents AX Central's `Makefile` targets, `hack/doctor.sh` CLI flags and JSON output schema, keyboard shortcuts, and all 17 WebMCP tools registered in `frontend/src/tools.ts`.
 
 ## 1. `Makefile` Targets
 
 | Target | Command / Behavior |
 | :--- | :--- |
 | `make check` | Runs all quality gates in sequence: `make lint`, `make security`, and `make test`. |
-| `make build` | Builds the Vite frontend (`frontend/dist`) and compiles the `ax-central` Go binary with `-ldflags "-s -w -X main.appVersion=$(VERSION)"`. |
-| `make wails-build` | Packages the native macOS bundle at `build/bin/AX Central.app`. |
+| `make build` | Builds the Vite frontend (`frontend/dist`) and compiles the `ax-central` Go binary with `$(WAILS_TAGS)` and `-ldflags "-s -w -X main.appVersion=$(VERSION)"`. |
+| `make wails-build` | Packages the native bundle at `build/bin/AX Central.app` (`wails build -nosyncgomod $(WAILS_TAGS)`). |
 | `make release-darwin` | Builds `AX Central.app`, archives `dist/AX-Central-v$(VERSION)-darwin-arm64.zip`, and writes `dist/SHA256SUMS`. |
 | `make version` | Prints the current version from `wails.json` (`info.productVersion`). |
-| `make dev` | Starts a live-reloading `wails dev` session. |
+| `make dev` | Starts a live-reloading `wails dev $(WAILS_TAGS)` session. |
 | `make run-frontend` | Starts the standalone Vite dev server (uses `createFallbackStudio()`). |
 | `make test` | Runs Go race tests (`go test -race -count=1 .`) and frontend Vitest browser tests (`Playwright Chromium` + `axe-core` WCAG 2.1 AA). |
-| `make lint` | Runs `gofmt -s`, `go vet .`, `golangci-lint run .`, `bash -n hack/*.sh docker-shim.sh`, `tsc --noEmit`, and `prettier --check .`. |
+| `make lint` | Runs `gofmt -s`, `go vet .` (plus cross-OS `GOOS=linux` and `GOOS=windows` `go vet`), `golangci-lint run .`, `bash -n hack/*.sh docker-shim.sh`, `tsc --noEmit`, and `prettier --check .`. |
 | `make security` | Runs `npm audit --audit-level=moderate` and verifies Go files use `any` instead of `interface{}`. |
 | `make doctor` | Runs `bash hack/doctor.sh` to audit Tier-A (`ate-local`) and Tier-B (`kind`) prerequisites. |
 | `make bootstrap` | Runs `bash hack/doctor.sh --install all` to clone/build missing Tier-A prerequisites. |
-| `make smoke-local` | Runs `bash hack/smoke-local.sh` to verify a live `debian:12` task lifecycle on the local Apple `container` stack. |
+| `make smoke-local` | Runs `bash hack/smoke-local.sh` to verify a live `debian:12` task lifecycle and cross-atespace (`default -> staging`) `Move Task` `tar`-over-`ax ssh` migration on the local Apple `container` stack. |
 | `make smoke-crostini` | Runs `bash hack/smoke-crostini.sh` to verify a live Workspace + Task lifecycle (`apply`, `resume`, `ax ssh`, `suspend`) on a local `kind` + Agent Substrate (`gVisor`) cluster. |
 | `make diagrams` | Renders `docs/diagrams/*.dot` to `*-{light,dark}.webp` via `gvpr` (`../graphviz-style/theme/luminous.gvpr`) and `dot -Twebp`. |
 | `make screenshots` | Runs `node hack/screenshots.mjs` to capture `1440×900` (`2x`) light and dark WebP screenshots in `docs/screenshots/`. |
@@ -30,7 +30,7 @@ This reference documents AX Central's `Makefile` targets, `hack/doctor.sh` CLI f
 ## 2. `hack/doctor.sh` CLI and JSON Schema
 
 ```bash
-hack/doctor.sh [--json] [--install [all|container-daemon|ax-repo|ate-local-bins|ax-experiments|agent-image]]
+hack/doctor.sh [--json] [--install [all|wails|container-daemon|ax-repo|ate-local-bins|ax-experiments|agent-image]]
 ```
 
 ### Environment Variables
@@ -90,6 +90,7 @@ All resource, context, and atespace names passed to WebMCP tools are validated b
 | `select_task` | *(none)* | `{ name: string }` | Selects a task in the UI to open `<ax-task-inspector>` (pass `""` to close). |
 | `suspend_task` | `consequential` | `{ name: string }` | Suspends a running or pending task (`ax suspend task <name>`). |
 | `resume_task` | *(none)* | `{ name: string }` | Resumes a suspended, failed, or completed task (`ax resume task <name>`). |
+| `move_task` | `consequential` | `{ name: string, target_context?: string, target_atespace?: string, delete_original?: boolean }` | Recreates a task and its workspace in `target_context` / `target_atespace` and streams `/workspace` across over `ax ssh` (`tar cf - \| tar xf -`). |
 | `delete_task` | `consequential` | `{ name: string }` | Deletes a task and tears down its sandbox (`ax delete task <name>`). |
 
 ### Group 2: `Workspaces & Scope`
@@ -105,9 +106,9 @@ All resource, context, and atespace names passed to WebMCP tools are validated b
 
 | Tool Name | Flags | Parameters | Description |
 | :--- | :--- | :--- | :--- |
-| `load_template` | *(none)* | `{ template: "blank" \| "simple" \| "gemini" \| "openai" \| "claude-managed-agents" \| "github-actions" \| "ate-local" \| "genkit-apple-container" \| "swarm-reviewer" }` | Loads a task template into `<ax-designer>` and switches to the **Deploy** view. |
+| `load_template` | *(none)* | `{ template: "blank" \| "simple" \| "antigravity" \| "gemini" \| "openai" \| "claude-managed-agents" \| "github-actions" \| "ate-local" \| "genkit-apple-container" \| "swarm-reviewer" }` | Loads a task template into `<ax-designer>` and switches to the **Deploy** view. |
 | `get_draft_manifest` | `readOnly` | `{}` | Returns the current YAML manifest in `<ax-designer>` (with secrets redacted), `can_apply`, and validation `issues`. |
 | `apply_manifest` | `consequential` | `{ yaml?: string }` | Applies either the provided `yaml` string or the current `<ax-designer>` draft via `ax apply -f -`. |
 | `list_clusters` | `readOnly` | `{}` | Returns container runtime info, `ate_local` 3-layer stack health and microVM list, and `kind` `clusters`. |
-| `manage_local_stack` | `consequential` | `{ action: "up" \| "down" \| "reset" \| "status" }` | Starts, stops, resets, or queries the local Apple `container` (`ate-local`) stack via `examples/ate_local/local-stack.sh`. |
+| `manage_local_stack` | `consequential` | `{ action: "up" \| "down" \| "reset" \| "status" \| "use" }` | Starts, stops, resets, queries, or switches to the local Apple `container` (`ate-local`) stack via `examples/ate_local/local-stack.sh`. |
 | `check_prerequisites` | `readOnly` | `{}` | Runs `hack/doctor.sh --json` to audit `go`, `/usr/local/bin/container`, `~/projects/ax` (`feat/ate-local-apple-container`), `.ax-local/bin/*`, `~/projects/ax-experiments`, `ax-agent-local:latest`, and `kind`/`kubectl`/`docker`/`podman`. |

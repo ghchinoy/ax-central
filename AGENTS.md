@@ -68,8 +68,8 @@ docker-shim.sh                  Embedded docker -> podman shim (TLS skip on loca
 frontend/src/
   theme.css / shared-styles.ts  Luminous 0.15–0.19 light/dark tokens + WCAG AA semantic status colors
   bridge.ts                     StudioAPI interface, Wails runtime adapter, and fallback/mock test bridge
-  registry.ts / tools.ts        WebMCP ToolHost (document.modelContext + fallback registry) & 16 AX tools
-  model/{resources,store,designer,clusters}.ts  EventTarget reactive stores
+  registry.ts / tools.ts        WebMCP ToolHost (document.modelContext + fallback registry) & 17 AX tools
+  model/{resources,store,designer,clusters,move}.ts  EventTarget reactive stores & cross-substrate Move Task engine
   views/{overview,task-logs,topology,designer,terminal,clusters,webmcp-drawer}*.ts
   views.test.ts                 Vitest + Playwright + axe-core WCAG 2 A/AA + E2E flow & security test suite
 ```

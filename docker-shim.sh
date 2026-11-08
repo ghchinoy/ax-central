@@ -13,13 +13,15 @@ digestfile() { printf '%s/%s' "$digests" "$(printf '%s' "$1" | tr '/:@' '___')";
 tls() { case "$1" in localhost:*|127.0.0.1:*) echo --tls-verify=false ;; esac; }
 
 buildx_build() {
-  plat= tag= push=
+  plat= tag= push= meta=
   n=$#
   while [ "$n" -gt 0 ]; do
     a=$1; shift; n=$((n - 1))
     case "$a" in
       --push) push=1 ;;
       --load) ;;
+      --metadata-file=*) meta=${a#--metadata-file=} ;;
+      --metadata-file) meta=$1; shift; n=$((n - 1)) ;;
       --platform=*) plat=${a#--platform=} ;;
       --platform) plat=$1; shift; n=$((n - 1)) ;;
       --tag=*) tag=${a#--tag=} ;;
@@ -33,7 +35,9 @@ buildx_build() {
   podman manifest rm "$tag" >/dev/null 2>&1 || podman rmi "$tag" >/dev/null 2>&1 || true
   podman build ${plat:+--platform "$plat"} --manifest "$tag" "$@" || exit
   mkdir -p -m 0700 "$digests"
-  exec podman manifest push --all $(tls "$tag") --digestfile "$(digestfile "$tag")" "$tag" "docker://$tag"
+  f=$(digestfile "$tag")
+  podman manifest push --all $(tls "$tag") --digestfile "$f" "$tag" "docker://$tag" || exit
+  [ -z "$meta" ] || printf '{"image.name":"%s","containerimage.digest":"%s"}\n' "$tag" "$(cat "$f")" > "$meta"
 }
 
 imagetools_inspect() {

@@ -388,3 +388,100 @@ func TestLiveCrostiniKindClusterE2E(t *testing.T) {
 		t.Fatalf("sh.Run(ax suspend) status = %d, want 0 (stderr: %q)", suspendRes.Status, suspendRes.Stderr)
 	}
 }
+
+func TestShellPipe(t *testing.T) {
+	sh := NewShell()
+	req := PipeRequest{
+		FromProgram: "sh",
+		From:        []string{"-c", "printf '%s' \"$PIPE_SRC\""},
+		FromEnv:     map[string]string{"PIPE_SRC": "hello-pipe"},
+		ToProgram:   "tr",
+		To:          []string{"a-z", "A-Z"},
+	}
+	res := sh.Pipe(req)
+	if res.Status != 0 {
+		t.Fatalf("sh.Pipe(%+v) status = %d, want 0 (stderr: %q)", req, res.Status, res.Stderr)
+	}
+	if res.Stdout != "HELLO-PIPE" {
+		t.Fatalf("sh.Pipe(%+v) stdout = %q, want %q", req, res.Stdout, "HELLO-PIPE")
+	}
+
+	failFrom := PipeRequest{
+		Program: "sh",
+		From:    []string{"-c", "echo from-err >&2; exit 3"},
+		To:      []string{"-c", "cat"},
+	}
+	resFailFrom := sh.Pipe(failFrom)
+	if resFailFrom.Status == 0 {
+		t.Fatalf("sh.Pipe(%+v) status = %d, want non-zero", failFrom, resFailFrom.Status)
+	}
+	if !strings.Contains(resFailFrom.Stderr, "from-err") {
+		t.Fatalf("sh.Pipe(%+v) stderr = %q, want substring %q", failFrom, resFailFrom.Stderr, "from-err")
+	}
+
+	failTo := PipeRequest{
+		Program: "sh",
+		From:    []string{"-c", "printf 'data'"},
+		To:      []string{"-c", "echo to-err >&2; exit 5"},
+	}
+	resFailTo := sh.Pipe(failTo)
+	if resFailTo.Status == 0 {
+		t.Fatalf("sh.Pipe(%+v) status = %d, want non-zero", failTo, resFailTo.Status)
+	}
+	if !strings.Contains(resFailTo.Stderr, "to-err") {
+		t.Fatalf("sh.Pipe(%+v) stderr = %q, want substring %q", failTo, resFailTo.Stderr, "to-err")
+	}
+}
+
+func TestDockerShimBuildxMetadataFile(t *testing.T) {
+	sh := NewShell()
+	tmp := t.TempDir()
+	fakePodman := filepath.Join(tmp, "podman")
+	podmanScript := `#!/bin/sh
+if [ "$1" = "manifest" ] && [ "$2" = "push" ]; then
+  while [ $# -gt 0 ]; do
+    if [ "$1" = "--digestfile" ]; then
+      printf 'sha256:deadbeefcafe' > "$2"
+      exit 0
+    fi
+    shift
+  done
+fi
+exit 0
+`
+	if err := os.WriteFile(fakePodman, []byte(podmanScript), 0o755); err != nil {
+		t.Fatalf("os.WriteFile(%q) = %v, want nil", fakePodman, err)
+	}
+
+	metaFile := filepath.Join(tmp, "metadata.json")
+	req := RunRequest{
+		Program: "sh",
+		Args: []string{
+			"docker-shim.sh",
+			"buildx",
+			"build",
+			"--push",
+			"--metadata-file",
+			metaFile,
+			"-t",
+			"localhost:5001/app:v1",
+			".",
+		},
+		Env: map[string]string{
+			"PATH":           tmp + string(os.PathListSeparator) + "/bin" + string(os.PathListSeparator) + "/usr/bin",
+			"XDG_CACHE_HOME": filepath.Join(tmp, "cache"),
+		},
+	}
+	res := sh.Run(req)
+	if res.Status != 0 {
+		t.Fatalf("sh.Run(%+v) status = %d, want 0 (stderr: %q)", req, res.Status, res.Stderr)
+	}
+	gotBytes, err := os.ReadFile(metaFile)
+	if err != nil {
+		t.Fatalf("os.ReadFile(%q) = %v, want nil", metaFile, err)
+	}
+	want := "{\"image.name\":\"localhost:5001/app:v1\",\"containerimage.digest\":\"sha256:deadbeefcafe\"}\n"
+	if string(gotBytes) != want {
+		t.Fatalf("os.ReadFile(%q) = %q, want %q", metaFile, string(gotBytes), want)
+	}
+}

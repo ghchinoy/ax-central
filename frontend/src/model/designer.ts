@@ -25,6 +25,7 @@ export type Template =
   | "ate-local"
   | "genkit-apple-container"
   | "swarm-reviewer"
+  | "antigravity"
   | "gemini"
   | "openai"
   | "claude-managed-agents"
@@ -113,6 +114,7 @@ export const TEMPLATES: { id: Template; title: string; group?: string }[] = [
     title: "Swarm Code Reviewer (ate-local)",
     group: "ax-experiments",
   },
+  { id: "antigravity", title: "Antigravity Agent", group: "ax-images" },
   { id: "gemini", title: "Gemini Agent", group: "ax-images" },
   { id: "openai", title: "OpenAI Agent", group: "ax-images" },
   { id: "claude-managed-agents", title: "Claude Agent", group: "ax-images" },
@@ -156,14 +158,16 @@ function blank(): Draft {
 
 const AX_IMAGES = "ghcr.io/rakyll/ax-images";
 const IMAGE_DIGESTS = {
+  antigravity:
+    "sha256:8025a987861673718564e0e648a3c7785d23c2514be8c7a3d3b133413d9bc81e",
   gemini:
     "sha256:e3d8d953fc1ca112e3b0d00a655d82008996a328a5e8dbd1777f68f492fb91bc",
   openai:
     "sha256:9eeeb86183c1514ca4e3da8f412c2f704a457be13ba9797ebb1d942ba89417c1",
   "claude-managed-agents":
-    "sha256:af84c607dd0b2870046d0e5617ccebc4188f54f24ed2aab8d52e14e4554d83f3",
+    "sha256:1a532d86c58a5fea3005e9c525683cf8f354e2c403be6460a308ad2f8f0510c0",
   "github-actions":
-    "sha256:1f5b1798b306e4214e77cf655afbc5a339c5b4b15c9ee4aebc04142d737e60eb",
+    "sha256:63d02f8ff154efd5ee269414bc793bde90afb5aadedbe756e1c2f8389207c7bd",
 };
 const image = (name: keyof typeof IMAGE_DIGESTS) =>
   `${AX_IMAGES}/${name}@${IMAGE_DIGESTS[name]}`;
@@ -192,13 +196,13 @@ function agentTask(
     customConfig: config,
     env: secrets.map((key) => ({ id: uid(), key, value: "" })),
     workspaceMode: "new",
-    wsName: `humanize-${name}`,
+    wsName: `cachetools-${name}`,
     repos: [
       {
         id: uid(),
         name: "origin",
-        repo: "https://github.com/python-humanize/humanize.git",
-        branch: "main",
+        repo: "https://github.com/tkem/cachetools.git",
+        branch: "master",
       },
     ],
     files: [
@@ -206,7 +210,7 @@ function agentTask(
         id: uid(),
         path: "AGENTS.md",
         content: `# Working in this repo
-- Pure-Python library. Install with \`pip install -e ".[tests]"\`, test with \`pytest\`.
+- Pure-Python library. Install with \`pip install -e . pytest\`, test with \`pytest\`.
 - Keep changes small and focused; do not add runtime dependencies.
 - Do not push or open pull requests. Leave changes in the working tree.
 `,
@@ -387,6 +391,17 @@ prompt: |
           },
         ],
       };
+    case "antigravity":
+      return agentTask(
+        d,
+        "antigravity",
+        AGENT_PROMPT +
+          `model: gemini-3.8-flash
+maxTurns: 100
+builtinTools: ["google_search", "url_context"]
+`,
+        ["GEMINI_API_KEY"],
+      );
     case "gemini":
       return agentTask(
         d,
@@ -414,7 +429,9 @@ builtinTools: ["web_search"]
         d,
         "claude-managed-agents",
         `environment: "env_..."
-agent: "agent_..."
+agent:
+  model: "claude-opus-5-5"
+  system: "You are a careful software engineer working in /workspace."
 ` + AGENT_PROMPT,
         ["ANTHROPIC_API_KEY", "ANTHROPIC_ENVIRONMENT_KEY"],
       );

@@ -42,6 +42,7 @@ fi
 TASK_NAME="smoke-debian-$(date +%s)"
 cleanup() {
   "$AX_BIN" --server "$SERVER_ADDR" -a default delete task "$TASK_NAME" >/dev/null 2>&1 || true
+  "$AX_BIN" --server "$SERVER_ADDR" -a staging delete task "$TASK_NAME" >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
 
@@ -68,4 +69,34 @@ echo "==> Running ax ssh uname -sm..."
 OUT="$("$AX_BIN" --server "$SERVER_ADDR" -a default ssh "$TASK_NAME" -- uname -sm)"
 echo "    output: $OUT"
 [[ "$OUT" == *"Linux"* ]] || { echo "unexpected ssh output: $OUT" >&2; exit 1; }
-echo "==> Smoke test passed!"
+
+echo "==> Writing /workspace/migrated-proof.txt in default/$TASK_NAME..."
+"$AX_BIN" --server "$SERVER_ADDR" -a default ssh "$TASK_NAME" -- sh -c 'printf "migrated-ok-%s\n" "'"$TASK_NAME"'" > /workspace/migrated-proof.txt'
+
+echo "==> Creating destination copy in staging/$TASK_NAME and starting it..."
+cat <<EOF | "$AX_BIN" --server "$SERVER_ADDR" -a staging apply -f -
+apiVersion: ax.io/v1alpha1
+kind: Task
+metadata:
+  name: "${TASK_NAME}"
+  atespace: staging
+spec:
+  image: "debian:12"
+  command: ["sh", "-c", "echo smoke-staging-ready && sleep 120"]
+  resources:
+    limits:
+      cpu: "1"
+      memory: "512Mi"
+  debug: true
+EOF
+"$AX_BIN" --server "$SERVER_ADDR" -a staging resume task "$TASK_NAME" || "$AX_BIN" --server "$SERVER_ADDR" -a staging resume "$TASK_NAME"
+
+echo "==> Streaming /workspace from default/$TASK_NAME to staging/$TASK_NAME via tar over ax ssh..."
+"$AX_BIN" --server "$SERVER_ADDR" -a default ssh "$TASK_NAME" -- tar cf - -C /workspace . \
+  | "$AX_BIN" --server "$SERVER_ADDR" -a staging ssh "$TASK_NAME" -- sh -c 'chmod -R u+w "$1" 2>/dev/null || true; exec tar xf - -C "$1"' sh /workspace
+
+MIGRATED="$("$AX_BIN" --server "$SERVER_ADDR" -a staging ssh "$TASK_NAME" -- cat /workspace/migrated-proof.txt)"
+echo "    migrated: $MIGRATED"
+[[ "$MIGRATED" == "migrated-ok-${TASK_NAME}" ]] || { echo "unexpected migrated content: $MIGRATED" >&2; exit 1; }
+
+echo "==> Smoke test (including cross-atespace Move Task tar pipe) passed!"

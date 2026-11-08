@@ -28,6 +28,16 @@ export interface RunRequest {
   env?: Record<string, string>;
 }
 
+export interface PipeRequest {
+  program?: string;
+  fromProgram?: string;
+  from: string[];
+  fromEnv?: Record<string, string>;
+  toProgram?: string;
+  to: string[];
+  toEnv?: Record<string, string>;
+}
+
 export interface StreamRequest {
   id: string;
   commandLine: string;
@@ -82,6 +92,7 @@ export interface TraySummary {
 export interface StudioAPI {
   platform(): Promise<PlatformInfo>;
   run(req: RunRequest): Promise<CommandResult>;
+  pipe(req: PipeRequest): Promise<CommandResult>;
   stream(req: StreamRequest): Promise<void>;
   cancelStream(id: string): Promise<void>;
   onStreamLine(cb: (l: StreamLine) => void): () => void;
@@ -106,6 +117,7 @@ export interface StudioAPI {
 interface WailsAppBindings {
   Platform(): Promise<PlatformInfo>;
   Run(req: RunRequest): Promise<CommandResult>;
+  Pipe(req: PipeRequest): Promise<CommandResult>;
   Stream(req: StreamRequest): Promise<void>;
   CancelStream(id: string): Promise<void>;
   StartSession(req: SessionRequest): Promise<void>;
@@ -156,6 +168,7 @@ function createWailsStudio(
   return {
     platform: () => goApp.Platform(),
     run: (req) => goApp.Run(req),
+    pipe: (req) => goApp.Pipe(req),
     stream: (req) => goApp.Stream(req),
     cancelStream: (id) => goApp.CancelStream(id),
     onStreamLine: (cb) => onEvent<StreamLine>("stream:line", cb),
@@ -282,6 +295,7 @@ export function createFallbackStudio(
       version: "0.3.0",
     }),
     run: async (req) => (runHandler ? runHandler(req) : defaultRun(req)),
+    pipe: async () => ({ status: 0, stdout: "", stderr: "" }),
     stream: async (req) => {
       queueMicrotask(() => {
         if (req.commandLine.includes("container logs")) {

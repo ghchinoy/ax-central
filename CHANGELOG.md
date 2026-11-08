@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and [Common Changelog](https://common-changelog.org/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Cross-Context & Cross-Atespace Move Task (`<ax-move-task-modal>`, `move.ts`, `Shell.Pipe`, WebMCP `move_task`):** Recreate any task with `spec.debug: true` in another context or atespace and stream `/workspace` files directly between source and destination sandboxes over `ax ssh` (`tar cf - | tar xf -`) via a Go OS pipe (`[ax-central-n0a.1]`, `[ax-central-n0a.5]`).
+- **`ax-images` v0.5.0 Presets & `antigravity` Template (`designer.ts`):** Added the `Antigravity Agent` (`antigravity`) template, updated `claude-managed-agents` and `github-actions` to `v0.5.0` digests and nested `agent: { model, system }` config, and updated the sample Python workspace to `tkem/cachetools` (`[ax-central-n0a.3]`).
+- **Task-to-Task Router Edges (`AX_TARGETS`) & Inline Workspace Files in Map (`<ax-topology>`):** Render Bezier routing edges from multi-agent routers (such as `dgem-router` in `dgem-03`) to target specialist tasks and display inline workspace files in Column 0 (`[ax-central-a5z]`, `[ax-central-97s]`).
+- **Context Persistence & `store.showTask` (`store.ts`):** Persist the active context in `localStorage` (`ax-central.context`) and support deferred task selection in Activity (`[ax-central-n0a.4]`).
+
+### Fixed
+- **Podman `buildx --metadata-file` Support (`docker-shim.sh`):** Write `{"image.name","containerimage.digest"}` JSON when `docker buildx build --push --metadata-file <path>` is invoked (`[ax-central-n0a.2]`).
+- **Activity Session Sparkline SVG Namespace (`<ax-overview>`):** Render `<g>` and `<path>` elements inside `.digest-spark` using Lit `svg\`...\`` so the stacked phase area chart renders in the SVG namespace (`[ax-central-oc8]`).
+- **Atomic `fetchDetails` & Scale-to-Zero OTel Span Retention (`store.ts`, `<ax-task-logs>`):** Fetch task and workspace YAML details before committing `store.refresh()` state (eliminating the transient `empty /workspace` flash in Map) and retain captured Genkit OpenTelemetry spans across `Running` $\leftrightarrow$ `Suspended` scale-to-zero transitions (`[ax-central-97s]`, `[ax-central-88y]`).
+
 ## [0.3.0] - 2026-11-06
 
 ### Added

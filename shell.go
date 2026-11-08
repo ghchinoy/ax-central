@@ -51,6 +51,17 @@ type RunRequest struct {
 	Env     map[string]string `json:"env"`
 }
 
+// PipeRequest describes two commands connected by an OS pipe (From stdout -> To stdin).
+type PipeRequest struct {
+	Program     string            `json:"program"`
+	FromProgram string            `json:"fromProgram,omitempty"`
+	From        []string          `json:"from"`
+	FromEnv     map[string]string `json:"fromEnv,omitempty"`
+	ToProgram   string            `json:"toProgram,omitempty"`
+	To          []string          `json:"to"`
+	ToEnv       map[string]string `json:"toEnv,omitempty"`
+}
+
 // StreamRequest describes a shell command whose output lines are streamed.
 type StreamRequest struct {
 	ID          string            `json:"id"`
@@ -278,6 +289,94 @@ func (s *Shell) Run(req RunRequest) CommandResult {
 		Status: status,
 		Stdout: stdout.String(),
 		Stderr: stderr.String(),
+	}
+}
+
+// Pipe runs two commands connected by an OS pipe (From stdout -> To stdin) and waits for both.
+func (s *Shell) Pipe(req PipeRequest) CommandResult {
+	fromName := req.FromProgram
+	if fromName == "" {
+		fromName = req.Program
+	}
+	toName := req.ToProgram
+	if toName == "" {
+		toName = req.Program
+	}
+	fromProg := s.Which(fromName)
+	if fromProg == "" {
+		fromProg = fromName
+	}
+	toProg := s.Which(toName)
+	if toProg == "" {
+		toProg = toName
+	}
+
+	pr, pw, err := os.Pipe()
+	if err != nil {
+		return CommandResult{Status: 1, Stderr: err.Error()}
+	}
+
+	fromCmd := exec.Command(fromProg, req.From...)
+	fromCmd.Env = s.mergeEnv(req.FromEnv)
+	fromCmd.Stdout = pw
+	var fromStderr bytes.Buffer
+	fromCmd.Stderr = &fromStderr
+
+	toCmd := exec.Command(toProg, req.To...)
+	toCmd.Env = s.mergeEnv(req.ToEnv)
+	toCmd.Stdin = pr
+	var stdout, toStderr bytes.Buffer
+	toCmd.Stdout = &stdout
+	toCmd.Stderr = &toStderr
+
+	if err := fromCmd.Start(); err != nil {
+		_ = pr.Close()
+		_ = pw.Close()
+		return CommandResult{Status: 127, Stderr: fmt.Sprintf("%s: %v", fromName, err)}
+	}
+	_ = pw.Close()
+
+	if err := toCmd.Start(); err != nil {
+		_ = pr.Close()
+		_ = fromCmd.Process.Kill()
+		_ = fromCmd.Wait()
+		return CommandResult{Status: 127, Stderr: fmt.Sprintf("%s: %v", toName, err)}
+	}
+	_ = pr.Close()
+
+	fromDone := make(chan error, 1)
+	go func() {
+		err := fromCmd.Wait()
+		if err != nil {
+			_ = toCmd.Process.Kill()
+		}
+		fromDone <- err
+	}()
+
+	toErr := toCmd.Wait()
+	if toErr != nil {
+		_ = fromCmd.Process.Kill()
+	}
+	fromErr := <-fromDone
+
+	status := 0
+	for _, e := range []error{fromErr, toErr} {
+		if e != nil && status == 0 {
+			if exitErr, ok := e.(*exec.ExitError); ok {
+				status = exitErr.ExitCode()
+				if status <= 0 {
+					status = 1
+				}
+			} else {
+				status = 1
+			}
+		}
+	}
+	stderr := strings.TrimSpace(fromStderr.String() + "\n" + toStderr.String())
+	return CommandResult{
+		Status: status,
+		Stdout: stdout.String(),
+		Stderr: stderr,
 	}
 }
 

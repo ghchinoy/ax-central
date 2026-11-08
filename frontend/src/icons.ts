@@ -58,6 +58,7 @@ export type IconName =
   | "arrow-up"
   | "arrow-down"
   | "arrow-up-down"
+  | "arrow-right-left"
   | "bolt"
   | "copy"
   | "x"
@@ -161,6 +162,8 @@ function pathsFor(name: IconName) {
       return svg`<path d="M12 5v14"/><path d="m19 12-7 7-7-7"/>`;
     case "arrow-up-down":
       return svg`<path d="m21 16-4 4-4-4"/><path d="M17 20V4"/><path d="m3 8 4-4 4 4"/><path d="M7 4v16"/>`;
+    case "arrow-right-left":
+      return svg`<path d="m16 3 4 4-4 4"/><path d="M20 7H4"/><path d="m8 21-4-4 4-4"/><path d="M4 17h16"/>`;
     case "bolt":
       return svg`<path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><circle cx="12" cy="12" r="4"/>`;
     case "copy":

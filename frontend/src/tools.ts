@@ -24,6 +24,7 @@ import {
   type Template,
   withID,
 } from "./model/designer";
+import { moveTask } from "./model/move";
 import { isSafeResourceName, shortImage } from "./model/resources";
 import { SECTIONS, type Section, type Store } from "./model/store";
 import { ToolError } from "./registry";
@@ -85,6 +86,7 @@ export const TOOL_GROUPS: Record<string, string[]> = {
     "select_task",
     "suspend_task",
     "resume_task",
+    "move_task",
     "delete_task",
   ],
   "Workspaces & Scope": [
@@ -266,6 +268,76 @@ export const TOOLS: ToolDef[] = [
     },
   },
   {
+    name: "move_task",
+    description:
+      "Move an AX task and its /workspace files (via tar over ax ssh) to another context or atespace. Requires spec.debug: true on the task.",
+    inputSchema: obj(
+      {
+        name: { type: "string", description: "Name of the task to move." },
+        target_context: {
+          type: "string",
+          description:
+            "Destination context name (defaults to the current context).",
+        },
+        target_atespace: {
+          type: "string",
+          description:
+            'Destination atespace name (defaults to the current atespace, or "staging" when moving within the same context).',
+        },
+        delete_original: {
+          type: "boolean",
+          description:
+            "Whether to delete the original task after copying /workspace (defaults to false, which suspends the original).",
+        },
+      },
+      ["name"],
+    ),
+    consequential: true,
+    async execute(args, ctx) {
+      const name = reqSafeName(args, "name");
+      const s = ctx.store.state;
+      const task = s.tasks.find((t) => t.name === name || t.id === name);
+      if (!task) {
+        throw new ToolError(`Task "${name}" not found in ${s.atespace}.`);
+      }
+      const targetContext =
+        typeof args.target_context === "string" && args.target_context.trim()
+          ? reqSafeName(args, "target_context")
+          : s.context;
+      const targetAtespace =
+        typeof args.target_atespace === "string" && args.target_atespace.trim()
+          ? reqSafeName(args, "target_atespace")
+          : s.atespace;
+      const deleteOriginal = Boolean(args.delete_original);
+      let lastSteps: { title: string; state: string; detail?: string }[] = [];
+      const ok = await moveTask(
+        task,
+        { context: targetContext, atespace: targetAtespace },
+        deleteOriginal,
+        (steps) => {
+          lastSteps = steps;
+        },
+      );
+      if (!ok) {
+        const failed = lastSteps.find((st) => st.state === "failed");
+        throw new ToolError(
+          failed?.detail || `Failed to move task "${task.name}".`,
+        );
+      }
+      return {
+        result: {
+          moved: task.name,
+          from_context: s.context,
+          from_atespace: task.atespace,
+          target_context: targetContext,
+          target_atespace: targetAtespace,
+          delete_original: deleteOriginal,
+          ok: true,
+        },
+      };
+    },
+  },
+  {
     name: "delete_task",
     description:
       "Delete an AX task and tear down its sandbox. Only call when explicitly requested by the user.",
@@ -417,7 +489,7 @@ export const TOOLS: ToolDef[] = [
           type: "string",
           enum: TEMPLATES.map((t) => t.id),
           description:
-            "Template ID: blank, simple, ate-local, genkit-apple-container, swarm-reviewer, gemini, openai, claude-managed-agents, or github-actions.",
+            "Template ID: blank, simple, ate-local, genkit-apple-container, swarm-reviewer, antigravity, gemini, openai, claude-managed-agents, or github-actions.",
         },
       },
       ["template"],
