@@ -128,6 +128,16 @@ const INSPECTOR_WIDE_WIDTH = 640;
 const INSPECTOR_MIN_WIDTH = 340;
 const INSPECTOR_MAX_WIDTH = 780;
 
+function formatClusterName(ctx: string): string {
+  if (ctx === "local") {
+    return `local (Apple container · ${store.state.settings.localServer || "localhost:8090"})`;
+  }
+  if (ctx === "local-podman" || ctx === "local-b") {
+    return `local-podman (Podman Cluster B · ${store.state.settings.localServerB || "localhost:8091"})`;
+  }
+  return shortName(ctx || "local");
+}
+
 function loadInspectorWidth(): number {
   const raw = Number(localStorage.getItem(INSPECTOR_WIDTH_KEY));
   if (!Number.isFinite(raw) || raw < INSPECTOR_MIN_WIDTH) {
@@ -281,6 +291,7 @@ export class AxTaskInspector extends LitElement {
 
     const fields: [string, string | undefined][] = t
       ? [
+          ["Cluster", formatClusterName(s.context || "local")],
           ["Image", detail?.image],
           [
             "Command",
@@ -339,7 +350,11 @@ export class AxTaskInspector extends LitElement {
                       <div class="row">
                         ${renderPhaseBadge(t.phase)}
                         <span class="caption faint"
-                          >${t.atespace} · ${t.age}</span
+                          ><bdi dir="ltr"
+                            >${shortName(s.context || "local")} /
+                            ${t.atespace}</bdi
+                          >
+                          · ${t.age}</span
                         >
                       </div>
                     </div>
@@ -864,11 +879,43 @@ export class AxMoveTaskModal extends LitElement {
           @mousedown=${(e: Event) => e.stopPropagation()}
         >
           <h3>Move task “${this.task.name}”</h3>
-          <p class="muted" style="margin:0 0 14px;line-height:1.5">
+          <p class="muted" style="margin:0 0 12px;line-height:1.5">
             Recreates the task at the destination and copies
             <code>/workspace</code> over <code>ax ssh</code>. Processes restart
             against the copied files.
           </p>
+
+          <div class="move-route" aria-label="Task migration route">
+            <div class="move-endpoint">
+              <span class="move-ep-tag">Current cluster</span>
+              <strong
+                class="ellipsis"
+                title=${formatClusterName(s.context || "local")}
+                ><bdi dir="ltr"
+                  >${formatClusterName(s.context || "local")}</bdi
+                ></strong
+              >
+              <span class="caption faint"
+                >atespace <bdi dir="ltr">${this.task.atespace}</bdi></span
+              >
+            </div>
+            <div class="move-route-arrow" aria-hidden="true">
+              ${icon("arrow-right-left", 15, { color: "var(--primary)" })}
+            </div>
+            <div class="move-endpoint dest">
+              <span class="move-ep-tag">Destination cluster</span>
+              <strong
+                class="ellipsis"
+                title=${formatClusterName(this.context || "local")}
+                ><bdi dir="ltr"
+                  >${formatClusterName(this.context || "local")}</bdi
+                ></strong
+              >
+              <span class="caption faint"
+                >atespace <bdi dir="ltr">${trimmedAtes}</bdi></span
+              >
+            </div>
+          </div>
 
           ${
             noDebug
@@ -886,7 +933,9 @@ export class AxMoveTaskModal extends LitElement {
 
           <div class="move-form">
             <div class="move-field">
-              <label class="move-label" for="move-context">Context</label>
+              <label class="move-label" for="move-context"
+                >Destination cluster</label
+              >
               <select
                 id="move-context"
                 class="input"
@@ -916,9 +965,12 @@ export class AxMoveTaskModal extends LitElement {
             </div>
 
             <div class="move-field">
-              <label class="move-label" for="move-atespace">Atespace</label>
+              <label class="move-label" for="move-atespace"
+                >Destination atespace</label
+              >
               <input
                 id="move-atespace"
+                list="move-atespace-list"
                 class="input mono ${atesErr ? "invalid" : ""}"
                 ?disabled=${busy || this.done}
                 .value=${this.atespace}
@@ -927,6 +979,11 @@ export class AxMoveTaskModal extends LitElement {
                   this.atespace = (e.target as HTMLInputElement).value;
                 }}
               />
+              <datalist id="move-atespace-list">
+                <option value="default"></option>
+                <option value="staging"></option>
+                <option value="prod"></option>
+              </datalist>
             </div>
           </div>
 
@@ -1068,8 +1125,43 @@ export class AxMoveTaskModal extends LitElement {
     sharedStyles,
     css`
       .move-modal {
-        width: 480px;
+        width: 520px;
         max-width: calc(100vw - 32px);
+        box-sizing: border-box;
+      }
+      .move-route {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+        align-items: center;
+        gap: 10px;
+        padding: 10px 12px;
+        margin-bottom: 12px;
+        border-radius: var(--radius-s);
+        background: var(--surface-container);
+        border: 1px solid var(--border);
+        font-size: 12px;
+      }
+      .move-endpoint {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        min-width: 0;
+      }
+      .move-endpoint.dest {
+        border-left: 2px solid var(--primary);
+        padding-left: 10px;
+      }
+      .move-ep-tag {
+        font-size: 10px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        color: var(--text-3);
+      }
+      .move-route-arrow {
+        display: flex;
+        align-items: center;
+        justify-content: center;
       }
       .move-warn {
         display: flex;
@@ -1088,7 +1180,7 @@ export class AxMoveTaskModal extends LitElement {
       }
       .move-form {
         display: grid;
-        grid-template-columns: 1fr 1fr;
+        grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
         gap: 10px;
         margin-bottom: 10px;
       }
@@ -1096,6 +1188,11 @@ export class AxMoveTaskModal extends LitElement {
         display: flex;
         flex-direction: column;
         gap: 4px;
+        min-width: 0;
+      }
+      .move-field .input {
+        width: 100%;
+        box-sizing: border-box;
       }
       .move-label {
         font-size: 11px;

@@ -991,10 +991,21 @@ describe("Luminous 0.15–0.19 patterns & WCAG 2 A/AA in ax-central", () => {
     await (overviewEl as unknown as { updateComplete: Promise<boolean> })
       .updateComplete;
     const moveModal =
-      overviewEl.shadowRoot!.querySelector("ax-move-task-modal");
+      overviewEl.shadowRoot!.querySelector("ax-move-task-modal")!;
     expect(moveModal).not.toBeNull();
     await (moveModal as unknown as { updateComplete: Promise<boolean> })
       .updateComplete;
+    const routeEl = moveModal.shadowRoot!.querySelector(".move-route")!;
+    expect(routeEl).not.toBeNull();
+    expect(routeEl.textContent).toContain("Current cluster");
+    expect(routeEl.textContent).toContain("Destination cluster");
+    const modalCard =
+      moveModal.shadowRoot!.querySelector<HTMLElement>(".move-modal")!;
+    const atesInput =
+      moveModal.shadowRoot!.querySelector<HTMLElement>("#move-atespace")!;
+    expect(atesInput.getBoundingClientRect().right).toBeLessThanOrEqual(
+      modalCard.getBoundingClientRect().right,
+    );
     const modalAxe = await axe.run(document.body, {
       runOnly: ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"],
     });
