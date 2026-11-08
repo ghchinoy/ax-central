@@ -782,6 +782,20 @@ describe("WebMCP ToolHost & AX tools", () => {
       'chmod -R u+w "$1" 2>/dev/null || true; exec tar xf - -C "$1"',
     );
 
+    // Re-running move_task with overwrite_existing: true replaces the existing task in staging (ax-central-ggb)
+    const movedReplace = await el.host.call(
+      "move_task",
+      {
+        name: "gemini-a1b2c3",
+        target_context: "local",
+        target_atespace: "staging",
+        delete_original: false,
+        overwrite_existing: true,
+      },
+      sig,
+    );
+    expect(movedReplace.ok).toBe(true);
+
     const susp = await el.host.call(
       "suspend_task",
       { name: "gemini-a1b2c3" },

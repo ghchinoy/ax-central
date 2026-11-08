@@ -289,6 +289,11 @@ export const TOOLS: ToolDef[] = [
           description:
             "Whether to delete the original task after copying /workspace (defaults to false, which suspends the original).",
         },
+        overwrite_existing: {
+          type: "boolean",
+          description:
+            "Whether to delete and replace an existing task of the same name at the destination (defaults to false).",
+        },
       },
       ["name"],
     ),
@@ -309,10 +314,15 @@ export const TOOLS: ToolDef[] = [
           ? reqSafeName(args, "target_atespace")
           : s.atespace;
       const deleteOriginal = Boolean(args.delete_original);
+      const overwriteExisting = Boolean(args.overwrite_existing);
       let lastSteps: { title: string; state: string; detail?: string }[] = [];
       const ok = await moveTask(
         task,
-        { context: targetContext, atespace: targetAtespace },
+        {
+          context: targetContext,
+          atespace: targetAtespace,
+          overwriteExisting,
+        },
         deleteOriginal,
         (steps) => {
           lastSteps = steps;

@@ -292,7 +292,7 @@ export function createFallbackStudio(
       os: "darwin",
       home: "/Users/dev",
       pathSeparator: ":",
-      version: "0.4.2",
+      version: "0.4.3",
     }),
     run: async (req) => (runHandler ? runHandler(req) : defaultRun(req)),
     pipe: async () => ({ status: 0, stdout: "", stderr: "" }),

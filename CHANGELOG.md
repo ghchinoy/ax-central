@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and [Common Changelog](https://common-changelog.org/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.3] - 2026-11-08
+
+### Added
+- **Proactive Destination Collision Check & Replace Existing Task Option (`<ax-move-task-modal>`, `move.ts`, WebMCP `move_task`):** Proactively probe whether the task already exists in the chosen destination cluster/atespace (`taskExistsAt`), highlight a `"Replace existing <task> in <cluster> / <atespace>"` checkbox with an `"already exists there"` badge, and support `overwriteExisting` / `overwrite_existing: true` to delete and replace the destination copy in one click (`[ax-central-ggb]`).
+
 ## [0.4.2] - 2026-11-08
 
 ### Added
@@ -89,6 +94,7 @@ _Initial release._
 ### Security
 - **WebMCP Argument-Injection & STDIO MCP Guards:** Enforced `reqSafeName` validation across all WebMCP tool inputs to reject leading `-` CLI flags, added `mcp-auditor` warnings for shell wrappers in Workspace STDIO MCP servers, and added `make security` (`npm audit` + Go readability checks) (`[ax-central-hw9]`).
 
+[0.4.3]: https://github.com/ghchinoy/ax-central/compare/v0.4.2...v0.4.3
 [0.4.2]: https://github.com/ghchinoy/ax-central/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/ghchinoy/ax-central/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/ghchinoy/ax-central/compare/v0.3.0...v0.4.0

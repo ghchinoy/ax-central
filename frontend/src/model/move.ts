@@ -37,6 +37,7 @@ export interface MoveTarget {
   context: string;
   atespace: string;
   clearUnpinnedImage?: boolean;
+  overwriteExisting?: boolean;
 }
 
 export type StepState = "pending" | "running" | "done" | "failed";
@@ -152,15 +153,32 @@ async function ensureRunning(
   await waitFor(context, atespace, name, "running");
 }
 
+export async function taskExistsAt(
+  context: string,
+  atespace: string,
+  name: string,
+): Promise<boolean> {
+  if (
+    !isSafeResourceName(context) ||
+    !isSafeResourceName(atespace) ||
+    !isSafeResourceName(name)
+  ) {
+    return false;
+  }
+  const r = await axAt(context, atespace, ["get", "task", name]);
+  return r.ok;
+}
+
 export function moveSteps(
   to: MoveTarget,
   deleteOriginal: boolean,
   path = "/workspace",
 ): MoveStep[] {
+  const step2Verb = to.overwriteExisting ? "Replace it in" : "Create it in";
   return [
     { title: "Read the task and its workspace", state: "pending" },
     {
-      title: `Create it in ${to.context || "local"} / ${to.atespace || "default"}`,
+      title: `${step2Verb} ${to.context || "local"} / ${to.atespace || "default"}`,
       state: "pending",
     },
     { title: "Start both copies", state: "pending" },
@@ -191,6 +209,7 @@ export async function moveTask(
     context: destContext,
     atespace: destAtespace,
     clearUnpinnedImage: to.clearUnpinnedImage,
+    overwriteExisting: to.overwriteExisting,
   };
 
   let steps = moveSteps(target, deleteOriginal);
@@ -279,7 +298,10 @@ export async function moveTask(
 
     await step(1, async () => {
       if ((await axAt(destContext, destAtespace, ["get", "task", t.name])).ok) {
-        throw new Error(`A task named ${t.name} already exists there.`);
+        if (!target.overwriteExisting) {
+          throw new Error(`A task named ${t.name} already exists there.`);
+        }
+        await mustAt(destContext, destAtespace, ["delete", "task", t.name]);
       }
       await mustAt(destContext, destAtespace, ["apply", "-f", "-"], manifests);
       created = true;

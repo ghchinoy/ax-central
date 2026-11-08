@@ -14,7 +14,7 @@
   "info": {
     "companyName": "AX Central",
     "productName": "AX Central",
-    "productVersion": "0.4.2",
+    "productVersion": "0.4.3",
     "copyright": "Copyright 2026 Google LLC",
     "comments": "Deploy, design and visualize AX tasks with WebMCP"
   }

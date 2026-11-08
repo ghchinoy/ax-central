@@ -1,7 +1,7 @@
 # AX Central
 
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-0.4.2-0b57d0.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.4.3-0b57d0.svg)](CHANGELOG.md)
 [![Go](https://img.shields.io/badge/Go-1.26+-00ADD8.svg)](go.mod)
 [![WebMCP](https://img.shields.io/badge/WebMCP-document.modelContext-188038.svg)](docs/reference/cli-and-webmcp-tools.md)
 
@@ -149,7 +149,7 @@ To build a release archive locally on macOS:
 make release-darwin
 # Produces:
 #   build/bin/AX Central.app
-#   dist/AX-Central-v0.4.2-darwin-arm64.zip
+#   dist/AX-Central-v0.4.3-darwin-arm64.zip
 #   dist/SHA256SUMS
 ```
 

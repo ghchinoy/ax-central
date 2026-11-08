@@ -38,7 +38,12 @@ import {
   shortName,
   validateLabel,
 } from "../model/resources";
-import { type MoveStep, moveSteps, moveTask } from "../model/move";
+import {
+  type MoveStep,
+  moveSteps,
+  moveTask,
+  taskExistsAt,
+} from "../model/move";
 import { store } from "../model/store";
 import { sharedStyles } from "../shared-styles";
 import "./task-logs";
@@ -799,10 +804,13 @@ export class AxMoveTaskModal extends LitElement {
   @state() private context = "";
   @state() private atespace = "";
   @state() private deleteOriginal = false;
+  @state() private overwriteExisting = false;
+  @state() private destExists = false;
   @state() private clearUnpinnedImage = true;
   @state() private steps: MoveStep[] | null = null;
   @state() private done = false;
   @state() private initializedFor = "";
+  private checkToken = 0;
 
   override willUpdate(): void {
     if (this.task && this.initializedFor !== this.task.id) {
@@ -816,9 +824,33 @@ export class AxMoveTaskModal extends LitElement {
           ? "staging"
           : "default";
       this.deleteOriginal = false;
+      this.overwriteExisting = false;
+      this.destExists = false;
       this.clearUnpinnedImage = true;
       this.steps = null;
       this.done = false;
+      void this.probeDestinationCollision();
+    }
+  }
+
+  private async probeDestinationCollision(): Promise<void> {
+    if (!this.task) return;
+    const trimmedAtes = this.atespace.trim() || "default";
+    const s = store.state;
+    const samePlace =
+      this.context === s.context && trimmedAtes === this.task.atespace;
+    if (samePlace || validateLabel(trimmedAtes) !== null) {
+      this.destExists = false;
+      return;
+    }
+    const token = ++this.checkToken;
+    const exists = await taskExistsAt(
+      this.context,
+      trimmedAtes,
+      this.task.name,
+    );
+    if (token === this.checkToken) {
+      this.destExists = exists;
     }
   }
 
@@ -827,6 +859,7 @@ export class AxMoveTaskModal extends LitElement {
       context: this.context,
       atespace: this.atespace.trim() || "default",
       clearUnpinnedImage: this.clearUnpinnedImage,
+      overwriteExisting: this.overwriteExisting,
     };
     this.steps = moveSteps(target, this.deleteOriginal);
     this.done = await moveTask(
@@ -863,7 +896,14 @@ export class AxMoveTaskModal extends LitElement {
     const unpinnedToCluster =
       !isLocalContext(this.context) &&
       Boolean(detail?.image && !detail.image.includes("@sha256:"));
-    const canStart = !busy && !this.done && !atesErr && !samePlace && !noDebug;
+    const collisionBlocked = this.destExists && !this.overwriteExisting;
+    const canStart =
+      !busy &&
+      !this.done &&
+      !atesErr &&
+      !samePlace &&
+      !noDebug &&
+      !collisionBlocked;
 
     return html`
       <div
@@ -943,6 +983,7 @@ export class AxMoveTaskModal extends LitElement {
                 .value=${this.context}
                 @change=${(e: Event) => {
                   this.context = (e.target as HTMLSelectElement).value;
+                  void this.probeDestinationCollision();
                 }}
               >
                 ${s.contexts.map(
@@ -977,6 +1018,7 @@ export class AxMoveTaskModal extends LitElement {
                 placeholder="default"
                 @input=${(e: Event) => {
                   this.atespace = (e.target as HTMLInputElement).value;
+                  void this.probeDestinationCollision();
                 }}
               />
               <datalist id="move-atespace-list">
@@ -1038,6 +1080,32 @@ export class AxMoveTaskModal extends LitElement {
               Delete original in
               <strong>${s.context} / ${this.task.atespace}</strong> after copy
               (otherwise suspend it)
+            </span>
+          </label>
+
+          <label
+            class="move-check ${
+              this.destExists && !this.overwriteExisting ? "warn" : ""
+            }"
+          >
+            <input
+              type="checkbox"
+              ?disabled=${busy || this.done}
+              .checked=${this.overwriteExisting}
+              @change=${(e: Event) => {
+                this.overwriteExisting = (e.target as HTMLInputElement).checked;
+              }}
+            />
+            <span>
+              Replace existing
+              <strong><bdi dir="ltr">${this.task.name}</bdi></strong> in
+              <strong>${shortName(this.context)} / ${trimmedAtes}</strong>${
+                this.destExists
+                  ? html` <span class="move-exists-badge"
+                      >already exists there</span
+                    >`
+                  : " if present"
+              }
             </span>
           </label>
 
@@ -1212,6 +1280,31 @@ export class AxMoveTaskModal extends LitElement {
       }
       .move-check input {
         margin-top: 2px;
+      }
+      .move-check.warn {
+        padding: 7px 10px;
+        border-radius: var(--radius-s);
+        background: color-mix(
+          in srgb,
+          var(--orange) 12%,
+          var(--surface-bright)
+        );
+        border: 1px solid color-mix(in srgb, var(--orange) 35%, var(--border));
+        color: var(--on-surface);
+      }
+      .move-exists-badge {
+        display: inline-block;
+        margin-left: 4px;
+        padding: 1px 6px;
+        border-radius: 999px;
+        font-size: 10.5px;
+        font-weight: 600;
+        background: color-mix(
+          in srgb,
+          var(--orange) 18%,
+          var(--surface-bright)
+        );
+        color: var(--on-surface);
       }
       .move-steps {
         margin-top: 12px;
