@@ -46,7 +46,7 @@ import {
   type ModelContextLike,
   type RegisteredTool,
 } from "./registry";
-import { store } from "./model/store";
+import { parseTraceJSONLToFrames, store } from "./model/store";
 import { parseJaegerTraceJSON, parseSlogFields } from "./views/task-logs";
 
 beforeEach(() => {
@@ -619,6 +619,30 @@ describe("WebMCP ToolHost & AX tools", () => {
     expect(sparkPath).not.toBeNull();
     expect(sparkPath?.namespaceURI).toBe("http://www.w3.org/2000/svg");
 
+    // Verify Post-Mortem Workspace Snapshots (.ax-local/snapshots) table & modal in Activity (ax-central-5rr.2)
+    expect(store.state.snapshots).toHaveLength(1);
+    expect(store.state.snapshots[0]?.name).toBe("dgem-mcp-triage");
+    const inspectSnapBtn =
+      overviewEl.shadowRoot!.querySelector<HTMLButtonElement>(
+        'button[aria-label="Inspect snapshot dgem-mcp-triage"]',
+      );
+    expect(inspectSnapBtn).not.toBeNull();
+    inspectSnapBtn?.click();
+    await new Promise((r) => setTimeout(r, 40));
+    await (overviewEl as unknown as { updateComplete: Promise<boolean> })
+      .updateComplete;
+    const snapModal = overviewEl.shadowRoot!.querySelector(".snap-modal")!;
+    expect(snapModal).not.toBeNull();
+    expect(snapModal.textContent).toContain("TRIAGE_DECISION.md");
+    expect(snapModal.textContent).toContain("Approved zero-jitter guard fix");
+    overviewEl
+      .shadowRoot!.querySelector<HTMLButtonElement>(
+        'button[aria-label="Close snapshot inspector"]',
+      )
+      ?.click();
+    await (overviewEl as unknown as { updateComplete: Promise<boolean> })
+      .updateComplete;
+
     // 4. Map: verify topology graph renders Workspace -> Task edge and AX_TARGETS router -> specialist edges (ax-central-a5z, ax-central-97s)
     const routerDetail = parseTaskYAML(
       'apiVersion: ax.io/v1alpha1\nkind: Task\nmetadata:\n  name: dgem-router\nspec:\n  env:\n    - name: AX_TARGETS\n      value: "gemini-a1b2c3,shell-task-01"\n',
@@ -651,6 +675,28 @@ describe("WebMCP ToolHost & AX tools", () => {
     expect(
       topoEl.shadowRoot!.querySelectorAll(".topo-edge").length,
     ).toBeGreaterThanOrEqual(4);
+
+    // Verify Map Session DVR & .jsonl Swarm Trace Replay scrubber (ax-central-5rr.1)
+    const dvrBar = topoEl.shadowRoot!.querySelector(".topo-dvr")!;
+    expect(dvrBar).not.toBeNull();
+    const traceFrames = parseTraceJSONLToFrames(
+      [
+        '{"t":100.0,"src":"recipe","kind":"node.add","id":"dgem-router","role":"coordinator"}',
+        '{"t":100.2,"src":"recipe","kind":"node.add","id":"specialist-billing","role":"worker"}',
+        '{"t":102.0,"src":"recipe","kind":"edge.msg","from":"dgem-router","to":"specialist-billing","label":"A2A dispatch"}',
+        '{"t":106.0,"src":"recipe","kind":"edge.msg","from":"specialist-billing","to":"dgem-router","label":"A2A reply"}',
+      ].join("\n"),
+    );
+    expect(traceFrames).toHaveLength(4);
+    expect(
+      traceFrames[2]?.tasks.find((t) => t.name === "specialist-billing")?.phase,
+    ).toBe("running");
+    expect(
+      traceFrames[3]?.tasks.find((t) => t.name === "specialist-billing")?.phase,
+    ).toBe("suspended");
+    expect(traceFrames[2]?.details["default/dgem-router"]?.targets).toContain(
+      "specialist-billing",
+    );
 
     // 5. Terminal: open ax ssh session tab for running task & verify Open in Ghostty flags (ax-central-s83, ax-central-77l)
     const runningTask = store.state.tasks[0]!;

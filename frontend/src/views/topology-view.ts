@@ -26,7 +26,7 @@ import {
   phaseLabel,
   repoName,
 } from "../model/resources";
-import { type State, store } from "../model/store";
+import { type DVRFrame, type State, store } from "../model/store";
 import { sharedStyles } from "../shared-styles";
 import "./overview-view";
 
@@ -73,7 +73,7 @@ function rightArc(ax: number, ay: number, bx: number, by: number): string {
   return `M${ax},${ay} C${ax + spread},${ay} ${bx + spread},${by} ${bx},${by}`;
 }
 
-function layoutGraph(s: State) {
+function layoutGraph(s: Pick<State, "tasks" | "workspaces" | "details">) {
   const nodes: GraphNode[] = [];
   const edges: GraphEdge[] = [];
   let y = TOP;
@@ -310,16 +310,79 @@ const LEGEND: Phase[] = ["running", "pending", "suspended", "failed"];
 export class AxTopology extends LitElement {
   @state() private hover: string | null = null;
   @state() private zoom = 1;
+  @state() private dvrSource = "live";
+  @state() private traceFiles: { name: string; path: string }[] = [];
+  @state() private traceFrames: DVRFrame[] = [];
+  @state() private scrubIndex: number | null = null;
+  @state() private playing = false;
   private offStore: (() => void) | null = null;
+  private playTimer: ReturnType<typeof setInterval> | null = null;
 
   override connectedCallback(): void {
     super.connectedCallback();
     this.offStore = store.subscribe(() => this.requestUpdate());
+    void this.discoverTraces();
   }
 
   override disconnectedCallback(): void {
     super.disconnectedCallback();
     this.offStore?.();
+    this.stopPlay();
+  }
+
+  private async discoverTraces(): Promise<void> {
+    this.traceFiles = await store.listTraceFiles();
+  }
+
+  private async selectSource(src: string): Promise<void> {
+    this.stopPlay();
+    this.dvrSource = src;
+    if (src === "live") {
+      this.traceFrames = [];
+      this.scrubIndex = null;
+      return;
+    }
+    const frames = await store.loadTraceFile(src);
+    this.traceFrames = frames;
+    this.scrubIndex = frames.length > 0 ? 0 : null;
+  }
+
+  private togglePlay(frames: DVRFrame[]): void {
+    if (this.playing) {
+      this.stopPlay();
+      return;
+    }
+    if (frames.length === 0) return;
+    if (this.scrubIndex === null || this.scrubIndex >= frames.length - 1) {
+      this.scrubIndex = 0;
+    }
+    this.playing = true;
+    this.playTimer = setInterval(() => {
+      const curFrames =
+        this.dvrSource === "live" ? store.state.dvrFrames : this.traceFrames;
+      const next = (this.scrubIndex ?? 0) + 1;
+      if (next >= curFrames.length) {
+        this.scrubIndex = Math.max(0, curFrames.length - 1);
+        this.stopPlay();
+      } else {
+        this.scrubIndex = next;
+      }
+    }, 900);
+  }
+
+  private stopPlay(): void {
+    if (this.playTimer) {
+      clearInterval(this.playTimer);
+      this.playTimer = null;
+    }
+    this.playing = false;
+  }
+
+  private returnToLive(): void {
+    this.stopPlay();
+    this.dvrSource = "live";
+    this.traceFrames = [];
+    this.scrubIndex = null;
   }
 
   private onWheel = (e: WheelEvent): void => {
@@ -363,13 +426,116 @@ export class AxTopology extends LitElement {
     return set;
   }
 
+  private renderDVRBar(frames: DVRFrame[], activeFrame: DVRFrame | null) {
+    const isLiveFollowing =
+      this.dvrSource === "live" && this.scrubIndex === null;
+    const maxIdx = Math.max(0, frames.length - 1);
+    const curIdx =
+      this.scrubIndex !== null ? Math.min(this.scrubIndex, maxIdx) : maxIdx;
+
+    return html`
+      <div
+        class="topo-dvr"
+        role="region"
+        aria-label="Timeline DVR and trace replay"
+      >
+        <select
+          class="input small topo-dvr-select"
+          aria-label="Replay source"
+          .value=${this.dvrSource}
+          @change=${(e: Event) =>
+            void this.selectSource((e.target as HTMLSelectElement).value)}
+        >
+          <option value="live" ?selected=${this.dvrSource === "live"}>
+            Session DVR (${store.state.dvrFrames.length} frames)
+          </option>
+          ${this.traceFiles.map(
+            (tf) => html`
+              <option value=${tf.path} ?selected=${this.dvrSource === tf.path}>
+                Trace: ${tf.name}.jsonl
+              </option>
+            `,
+          )}
+        </select>
+
+        <button
+          class="btn small icon"
+          ?disabled=${frames.length <= 1}
+          title=${this.playing ? "Pause replay" : "Play timeline"}
+          aria-label=${this.playing ? "Pause replay" : "Play replay"}
+          @click=${() => this.togglePlay(frames)}
+        >
+          ${icon(this.playing ? "pause" : "play", 12)}
+        </button>
+
+        <input
+          type="range"
+          class="topo-dvr-slider"
+          aria-label="Timeline scrubber"
+          min="0"
+          max=${String(maxIdx)}
+          step="1"
+          ?disabled=${frames.length <= 1}
+          .value=${String(curIdx)}
+          @input=${(e: Event) => {
+            this.stopPlay();
+            this.scrubIndex = Number((e.target as HTMLInputElement).value);
+          }}
+        />
+
+        <span class="caption mono num topo-dvr-pos">
+          ${
+            frames.length > 0
+              ? `${curIdx + 1}/${frames.length} · ${activeFrame?.label ?? ""}`
+              : "0/0"
+          }
+        </span>
+
+        ${
+          activeFrame?.note
+            ? html`<span
+                class="caption ellipsis topo-dvr-note"
+                title=${activeFrame.note}
+                ><bdi dir="ltr">${activeFrame.note}</bdi></span
+              >`
+            : nothing
+        }
+
+        <span class="spacer"></span>
+
+        <button
+          class="btn small ${isLiveFollowing ? "primary" : ""}"
+          title="Return to live real-time topology"
+          @click=${() => this.returnToLive()}
+        >
+          ${icon("circle", 8, {
+            color: isLiveFollowing ? "currentColor" : "var(--green)",
+          })}
+          Live
+        </button>
+      </div>
+    `;
+  }
+
   override render() {
     const s = store.state;
-    const graph = layoutGraph(s);
+    const frames = this.dvrSource === "live" ? s.dvrFrames : this.traceFrames;
+    const isLiveFollowing =
+      this.dvrSource === "live" && this.scrubIndex === null;
+    const activeFrame =
+      !isLiveFollowing && frames.length > 0
+        ? (frames[
+            Math.min(this.scrubIndex ?? frames.length - 1, frames.length - 1)
+          ] ?? null)
+        : (frames[frames.length - 1] ?? null);
+    const viewState: Pick<State, "tasks" | "workspaces" | "details"> =
+      !isLiveFollowing && activeFrame ? activeFrame : s;
+    const graph = layoutGraph(viewState);
     const lit = this.computeLit(graph.edges);
     const edgeLit = (e: GraphEdge) =>
       !lit || (lit.has(e.from) && lit.has(e.to));
-    const empty = s.tasks.length === 0 && s.workspaces.length === 0;
+    const empty =
+      viewState.tasks.length === 0 && viewState.workspaces.length === 0;
 
     return html`
       <div class="topology-page">
@@ -542,6 +708,7 @@ export class AxTopology extends LitElement {
                   `
             }
           </div>
+          ${this.renderDVRBar(frames, activeFrame)}
         </div>
         <ax-task-inspector></ax-task-inspector>
       </div>
@@ -583,6 +750,37 @@ export class AxTopology extends LitElement {
         overflow: auto;
         border-top: 1px solid var(--border);
         position: relative;
+      }
+      .topo-dvr {
+        flex: none;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 8px 18px;
+        border-top: 1px solid var(--border);
+        background: var(--surface-bright);
+        min-width: 0;
+      }
+      .topo-dvr-select {
+        height: 26px;
+        font-size: 12px;
+        max-width: 240px;
+      }
+      .topo-dvr-slider {
+        width: 160px;
+        flex: none;
+      }
+      .topo-dvr-pos {
+        color: var(--on-surface-variant);
+        white-space: nowrap;
+      }
+      .topo-dvr-note {
+        padding: 2px 8px;
+        border-radius: 999px;
+        background: var(--surface-container);
+        border: 1px solid var(--border);
+        color: var(--on-surface);
+        max-width: 340px;
       }
       .topo-sizer {
         position: relative;

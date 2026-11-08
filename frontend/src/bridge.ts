@@ -281,6 +281,50 @@ export function createFallbackStudio(
         stderr: "",
       };
     }
+    if (req.program === "/bin/sh" && req.args?.[2] === "probe-snapshots") {
+      return {
+        status: 0,
+        stdout:
+          "/Users/dev/projects/ax/.ax-local/snapshots/default/dgem-mcp-triage.tar.gz|2048|2026-11-08 15:00:00\n",
+        stderr: "",
+      };
+    }
+    if (req.program === "python3" && req.args?.[0] === "-c") {
+      return {
+        status: 0,
+        stdout: JSON.stringify({
+          files: ["README.md", "TRIAGE_DECISION.md"],
+          previews: {
+            "README.md": "# Payment Service (payd)\n",
+            "TRIAGE_DECISION.md":
+              "## Decision\nApproved zero-jitter guard fix (`hes=2.1%`).\n",
+          },
+        }),
+        stderr: "",
+      };
+    }
+    if (req.program === "/bin/sh" && req.args?.[2] === "list-traces") {
+      return {
+        status: 0,
+        stdout:
+          "/Users/dev/projects/ax-experiments/viz/traces/09-dgem-specialist-router.jsonl\n",
+        stderr: "",
+      };
+    }
+    if (req.program === "/bin/sh" && req.args?.[2] === "read-trace") {
+      return {
+        status: 0,
+        stdout: [
+          '{"t":1794086220.0,"src":"recipe","kind":"run.start","id":"09-dgem-specialist-router","label":"09-dgem-specialist-router"}',
+          '{"t":1794086220.2,"src":"recipe","kind":"node.add","id":"dgem-router","role":"coordinator","label":"dgem-router"}',
+          '{"t":1794086220.3,"src":"recipe","kind":"node.add","id":"specialist-billing","role":"worker","label":"specialist-billing"}',
+          '{"t":1794086232.4,"src":"recipe","kind":"edge.msg","from":"dgem-router","to":"specialist-billing","label":"A2A dispatch (billing_ops, hes=0%)"}',
+          '{"t":1794086245.6,"src":"recipe","kind":"edge.msg","from":"specialist-billing","to":"dgem-router","label":"A2A reply"}',
+          '{"t":1794086324.1,"src":"recipe","kind":"run.end","id":"09-dgem-specialist-router","label":"09-dgem-specialist-router"}',
+        ].join("\n"),
+        stderr: "",
+      };
+    }
     return { status: 0, stdout: "ok\n", stderr: "" };
   };
 

@@ -32,6 +32,7 @@ import {
   parseTasks,
   parseWorkspaceYAML,
   parseWorkspaces,
+  toPhase,
 } from "./resources";
 
 export type Section =
@@ -56,6 +57,173 @@ export interface ActivityEntry {
 export interface PhaseSample {
   date: number;
   counts: Record<string, number>;
+}
+
+export interface WorkspaceSnapshot {
+  name: string;
+  atespace: string;
+  path: string;
+  sizeBytes: number;
+  updatedAt: string;
+}
+
+export interface DVRFrame {
+  date: number;
+  label: string;
+  note?: string;
+  tasks: AXTask[];
+  workspaces: AXWorkspace[];
+  details: Record<string, TaskDetail>;
+}
+
+export function parseTraceJSONLToFrames(text: string): DVRFrame[] {
+  const lines = text
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean);
+  const rawEvents: Record<string, unknown>[] = [];
+  for (const line of lines) {
+    try {
+      rawEvents.push(JSON.parse(line) as Record<string, unknown>);
+    } catch {
+      // skip invalid JSON line
+    }
+  }
+  if (rawEvents.length === 0) return [];
+
+  const t0 = Number(rawEvents[0]?.t) || 0;
+  const tasksMap = new Map<string, AXTask>();
+  const detailsMap: Record<string, TaskDetail> = {};
+  const frames: DVRFrame[] = [];
+
+  const pushFrame = (tSec: number, note?: string) => {
+    const relSec = Math.max(0, tSec - t0);
+    const clonedTasks = [...tasksMap.values()].map((tk) => ({ ...tk }));
+    const clonedDetails: Record<string, TaskDetail> = {};
+    for (const [k, v] of Object.entries(detailsMap)) {
+      clonedDetails[k] = {
+        ...v,
+        targets: v.targets ? [...v.targets] : undefined,
+      };
+    }
+    frames.push({
+      date: Math.round(tSec * 1000),
+      label: `+${relSec.toFixed(1)}s`,
+      note,
+      tasks: clonedTasks,
+      workspaces: [],
+      details: clonedDetails,
+    });
+  };
+
+  const ensureTask = (name: string, role?: string): AXTask => {
+    const id = `default/${name}`;
+    let tk = tasksMap.get(name);
+    if (!tk) {
+      const isCoord = role === "coordinator" || name.includes("router");
+      tk = {
+        id,
+        name,
+        atespace: "default",
+        phase: isCoord ? "running" : "suspended",
+        age: "0s",
+      };
+      tasksMap.set(name, tk);
+      detailsMap[id] = {
+        command: [],
+        env: [],
+        debug: true,
+        conditions: [],
+        manifest: "",
+      };
+    }
+    return tk;
+  };
+
+  const addRouterTarget = (routerName: string, targetName: string) => {
+    ensureTask(routerName, "coordinator");
+    ensureTask(targetName, "worker");
+    const rID = `default/${routerName}`;
+    const cur = detailsMap[rID]?.targets ?? [];
+    if (!cur.includes(targetName)) {
+      detailsMap[rID] = {
+        ...detailsMap[rID]!,
+        targets: [...cur, targetName],
+      };
+    }
+  };
+
+  for (const ev of rawEvents) {
+    const kind = String(ev.kind ?? "");
+    const tSec = Number(ev.t) || t0;
+    const id = typeof ev.id === "string" ? ev.id : "";
+    const from = typeof ev.from === "string" ? ev.from : "";
+    const to = typeof ev.to === "string" ? ev.to : "";
+    const label = typeof ev.label === "string" ? ev.label : "";
+    const role = typeof ev.role === "string" ? ev.role : undefined;
+
+    if (kind === "node.add" && id) {
+      ensureTask(id, role);
+      if (id.includes("router")) {
+        for (const other of tasksMap.keys()) {
+          if (other !== id) addRouterTarget(id, other);
+        }
+      } else {
+        for (const other of tasksMap.keys()) {
+          if (other.includes("router")) addRouterTarget(other, id);
+        }
+      }
+      pushFrame(tSec, label || `Added ${id}`);
+    } else if ((kind === "node.phase" || kind === "node.ready") && id) {
+      const tk = ensureTask(id, role);
+      tk.phase =
+        kind === "node.ready" ? "running" : toPhase(String(ev.phase ?? ""));
+      if (typeof ev.workerIP === "string") tk.workerIP = ev.workerIP;
+      pushFrame(tSec, label || `${id} → ${tk.phase}`);
+    } else if (kind === "node.remove" && id) {
+      tasksMap.delete(id);
+      pushFrame(tSec, `Removed ${id}`);
+    } else if (kind === "note") {
+      const m = /targets=([a-zA-Z0-9_,-]+(?:\s+[a-zA-Z0-9_,-]+)*)/.exec(label);
+      if (m?.[1]) {
+        const targets = m[1]
+          .split(/[\s,]+/)
+          .map((s) => s.trim())
+          .filter(Boolean);
+        for (const r of tasksMap.keys()) {
+          if (r.includes("router")) {
+            for (const tgt of targets) addRouterTarget(r, tgt);
+          }
+        }
+      }
+      pushFrame(tSec, label);
+    } else if (kind === "edge.msg" || kind === "edge.exec") {
+      if (from && to && from !== "host" && to !== "host") {
+        const isReply = /reply/i.test(label);
+        if (!isReply) {
+          addRouterTarget(from, to);
+          const targetTask = ensureTask(to, "worker");
+          targetTask.phase = "running";
+          pushFrame(tSec, `${from} → ${to}: ${label}`);
+        } else {
+          addRouterTarget(to, from);
+          const sourceTask = ensureTask(from, "worker");
+          sourceTask.phase = "suspended";
+          pushFrame(tSec, `${from} → ${to}: ${label}`);
+        }
+      } else if (to && to !== "host") {
+        const tk = ensureTask(to);
+        tk.phase = "running";
+        pushFrame(tSec, `${from || "host"} → ${to}: ${label}`);
+      }
+    } else if (kind === "run.end") {
+      for (const tk of tasksMap.values()) {
+        if (!tk.name.includes("router")) tk.phase = "suspended";
+      }
+      pushFrame(tSec, `Run completed (${label || id})`);
+    }
+  }
+  return frames;
 }
 
 export interface Settings {
@@ -89,6 +257,8 @@ export interface State {
   connectionError: string | null;
   activity: ActivityEntry[];
   history: PhaseSample[];
+  snapshots: WorkspaceSnapshot[];
+  dvrFrames: DVRFrame[];
   axVersion: string | null;
   axConfig: boolean;
   localAxBin: string | null;
@@ -157,6 +327,8 @@ export class Store extends EventTarget {
     connectionError: null,
     activity: [],
     history: [],
+    snapshots: [],
+    dvrFrames: [],
     axVersion: null,
     axConfig: true,
     localAxBin: null,
@@ -263,6 +435,8 @@ export class Store extends EventTarget {
       models: [],
       details: {},
       history: [],
+      snapshots: [],
+      dvrFrames: [],
       selectedTaskID: null,
       connectionError: null,
     });
@@ -501,7 +675,48 @@ export class Store extends EventTarget {
         : this.state.workspaces;
       const counts: Record<string, number> = {};
       for (const t of tasks) counts[t.phase] = (counts[t.phase] ?? 0) + 1;
-      const fetched = await this.fetchDetails(tasks, workspaces, force);
+      const [fetched, snapshots] = await Promise.all([
+        this.fetchDetails(tasks, workspaces, force),
+        isLocalContext(this.state.context)
+          ? this.loadSnapshots()
+          : Promise.resolve([] as WorkspaceSnapshot[]),
+      ]);
+      const now = Date.now();
+      const prevFrame = this.state.dvrFrames[this.state.dvrFrames.length - 1];
+      const frameSig = (tList: AXTask[], wList: AXWorkspace[]) =>
+        `${tList.map((t) => `${t.id}:${t.phase}:${t.workerIP ?? ""}`).join(",")}|${wList.map((w) => w.id).join(",")}`;
+      const curSig = frameSig(tasks, fetched.workspaces);
+      const prevSig = prevFrame
+        ? frameSig(prevFrame.tasks, prevFrame.workspaces)
+        : null;
+      let dvrFrames = this.state.dvrFrames;
+      if (
+        (tasks.length > 0 || prevFrame) &&
+        (prevSig === null || curSig !== prevSig)
+      ) {
+        const runningNames = tasks
+          .filter((t) => t.phase === "running")
+          .map((t) => t.name);
+        const note =
+          tasks.length === 0
+            ? "All tasks removed"
+            : runningNames.length > 0
+              ? `Running: ${runningNames.join(", ")}`
+              : `${tasks.length} task${tasks.length === 1 ? "" : "s"} suspended`;
+        const tStr = new Date(now).toTimeString().slice(0, 8);
+        dvrFrames = [
+          ...dvrFrames,
+          {
+            date: now,
+            label: tStr,
+            note,
+            tasks: tasks.map((t) => ({ ...t })),
+            workspaces: fetched.workspaces,
+            details: { ...fetched.details },
+          },
+        ].slice(-120);
+      }
+
       this.set({
         connectionError: null,
         tasks: same(tasks, this.state.tasks) ? this.state.tasks : tasks,
@@ -509,14 +724,141 @@ export class Store extends EventTarget {
         workspaces: fetched.workspaces,
         details: fetched.details,
         models: mr.ok ? parseModels(mr.stdout) : this.state.models,
-        lastRefresh: Date.now(),
-        history: [...this.state.history, { date: Date.now(), counts }].slice(
-          -360,
-        ),
+        snapshots,
+        dvrFrames,
+        lastRefresh: now,
+        history: [...this.state.history, { date: now, counts }].slice(-360),
       });
     } finally {
       this.set({ isRefreshing: false });
     }
+  }
+
+  private async loadSnapshots(): Promise<WorkspaceSnapshot[]> {
+    ensureStudioBridge();
+    const ates =
+      this.state.atespace && isSafeResourceName(this.state.atespace)
+        ? this.state.atespace
+        : "default";
+    const info = await window.studio.platform();
+    const repoExpanded = this.state.settings.repoPath.replace(/^~/, info.home);
+    const snapDir = `${repoExpanded}/.ax-local/snapshots/${ates}`;
+    const r = await window.studio.run({
+      program: "/bin/sh",
+      args: [
+        "-c",
+        'dir="$1"; [ -d "$dir" ] || exit 0; for f in "$dir"/*.tar.gz; do [ -f "$f" ] || continue; stat -f "%N|%z|%Sm" -t "%Y-%m-%d %H:%M:%S" "$f" 2>/dev/null || stat -c "%n|%s|%y" "$f" 2>/dev/null; done',
+        "probe-snapshots",
+        snapDir,
+      ],
+    });
+    if (r.status !== 0 || !r.stdout.trim()) return [];
+    return r.stdout
+      .split("\n")
+      .map((l) => l.trim())
+      .filter((l) => l.includes("|"))
+      .map((l) => {
+        const [p, sz, dt] = l.split("|");
+        const base = (p.split("/").pop() || p).replace(/\.tar\.gz$/, "");
+        return {
+          name: base,
+          atespace: ates,
+          path: p,
+          sizeBytes: Number(sz) || 0,
+          updatedAt: (dt || "").trim(),
+        };
+      })
+      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  }
+
+  async inspectSnapshot(snap: WorkspaceSnapshot): Promise<{
+    files: string[];
+    previews: Record<string, string>;
+  }> {
+    ensureStudioBridge();
+    const r = await window.studio.run({
+      program: "python3",
+      args: [
+        "-c",
+        [
+          "import json, sys, tarfile",
+          "files, previews = [], {}",
+          "with tarfile.open(sys.argv[1], 'r:gz') as tf:",
+          "  for m in tf.getmembers():",
+          "    if not m.isfile(): continue",
+          "    name = m.name.lstrip('./')",
+          "    if not name or name.startswith('.git/'): continue",
+          "    files.append(name)",
+          "    if m.size <= 32768:",
+          "      f = tf.extractfile(m)",
+          "      if f:",
+          "        raw = f.read(32768)",
+          "        try: previews[name] = raw.decode('utf-8')",
+          "        except Exception: pass",
+          "print(json.dumps({'files': sorted(files), 'previews': previews}))",
+        ].join("\n"),
+        snap.path,
+      ],
+    });
+    if (r.status === 0 && r.stdout.trim()) {
+      try {
+        return JSON.parse(r.stdout) as {
+          files: string[];
+          previews: Record<string, string>;
+        };
+      } catch {
+        // fall through
+      }
+    }
+    return { files: [], previews: {} };
+  }
+
+  async removeSnapshot(snap: WorkspaceSnapshot): Promise<void> {
+    ensureStudioBridge();
+    await window.studio.run({
+      program: "/bin/sh",
+      args: ["-c", 'rm -f "$1"', "rm-snapshot", snap.path],
+    });
+    this.log(`Delete snapshot ${snap.name}`, snap.path, true);
+    await this.refresh(true);
+  }
+
+  async listTraceFiles(): Promise<{ name: string; path: string }[]> {
+    ensureStudioBridge();
+    const info = await window.studio.platform();
+    const expExpanded = this.state.settings.experimentsPath.replace(
+      /^~/,
+      info.home,
+    );
+    const traceDir = `${expExpanded}/viz/traces`;
+    const r = await window.studio.run({
+      program: "/bin/sh",
+      args: [
+        "-c",
+        'dir="$1"; [ -d "$dir" ] || exit 0; for f in "$dir"/*.jsonl; do [ -f "$f" ] && printf "%s\\n" "$f"; done',
+        "list-traces",
+        traceDir,
+      ],
+    });
+    if (r.status !== 0 || !r.stdout.trim()) return [];
+    return r.stdout
+      .split("\n")
+      .map((l) => l.trim())
+      .filter(Boolean)
+      .map((p) => ({
+        name: (p.split("/").pop() || p).replace(/\.jsonl$/, ""),
+        path: p,
+      }));
+  }
+
+  async loadTraceFile(path: string): Promise<DVRFrame[]> {
+    ensureStudioBridge();
+    const r = await window.studio.run({
+      program: "/bin/sh",
+      args: ["-c", 'cat "$1"', "read-trace", path],
+    });
+    if (r.status !== 0 || !r.stdout.trim()) return [];
+    return parseTraceJSONLToFrames(r.stdout);
   }
 
   private async fetchDetails(

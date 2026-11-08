@@ -44,7 +44,7 @@ import {
   moveTask,
   taskExistsAt,
 } from "../model/move";
-import { store } from "../model/store";
+import { type WorkspaceSnapshot, store } from "../model/store";
 import { sharedStyles } from "../shared-styles";
 import "./task-logs";
 
@@ -1339,6 +1339,11 @@ export class AxOverview extends LitElement {
   @state() private confirmTask: AXTask | null = null;
   @state() private movingTask: AXTask | null = null;
   @state() private confirmWorkspace: AXWorkspace | null = null;
+  @state() private activeSnapshot: WorkspaceSnapshot | null = null;
+  @state() private snapshotFiles: string[] = [];
+  @state() private snapshotPreviews: Record<string, string> = {};
+  @state() private selectedSnapshotFile: string | null = null;
+  @state() private loadingSnapshot = false;
 
   private offStore: (() => void) | null = null;
 
@@ -1981,7 +1986,7 @@ export class AxOverview extends LitElement {
                   </div>
                 `
           }
-          ${this.renderWorkspaces()}
+          ${this.renderWorkspaces()} ${this.renderSnapshots()}
         </div>
 
         <ax-task-inspector></ax-task-inspector>
@@ -2046,6 +2051,234 @@ export class AxOverview extends LitElement {
             ? this.renderDeleteWorkspaceModal(this.confirmWorkspace)
             : nothing
         }
+        ${
+          this.activeSnapshot
+            ? this.renderSnapshotModal(this.activeSnapshot)
+            : nothing
+        }
+      </div>
+    `;
+  }
+
+  private async openSnapshot(snap: WorkspaceSnapshot): Promise<void> {
+    this.activeSnapshot = snap;
+    this.loadingSnapshot = true;
+    this.snapshotFiles = [];
+    this.snapshotPreviews = {};
+    this.selectedSnapshotFile = null;
+    const res = await store.inspectSnapshot(snap);
+    if (this.activeSnapshot?.path === snap.path) {
+      this.snapshotFiles = res.files;
+      this.snapshotPreviews = res.previews;
+      const preferred =
+        res.files.find((f) =>
+          /DECISION|REPORT|review|output|audit|migrated/i.test(f),
+        ) ??
+        res.files[0] ??
+        null;
+      this.selectedSnapshotFile = preferred;
+      this.loadingSnapshot = false;
+    }
+  }
+
+  private renderSnapshots() {
+    const s = store.state;
+    if (!isLocalContext(s.context) || s.snapshots.length === 0) {
+      return nothing;
+    }
+    const formatBytes = (b: number) =>
+      b >= 1024 * 1024
+        ? `${(b / (1024 * 1024)).toFixed(1)} MB`
+        : b >= 1024
+          ? `${(b / 1024).toFixed(1)} KB`
+          : `${b} B`;
+
+    return html`
+      <div class="row board-head" style="margin-top:18px" id="snapshot-board">
+        <h2>Workspace Snapshots</h2>
+        <span class="caption faint">
+          Persisted <code>.ax-local/snapshots/${s.atespace}/*.tar.gz</code>
+          archives (preserved even after containers are deleted).
+        </span>
+      </div>
+      <div class="card task-table-wrap">
+        <table class="task-table" aria-label="Workspace snapshots">
+          <thead>
+            <tr>
+              <th class="col-name">
+                <span class="th-label">Task Archive</span>
+              </th>
+              <th class="col-repos">
+                <span class="th-label">Status</span>
+              </th>
+              <th class="col-mcp">
+                <span class="th-label">Size</span>
+              </th>
+              <th class="col-files">
+                <span class="th-label">Saved At</span>
+              </th>
+              <th class="col-actions">
+                <span class="sr">Actions</span>
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            ${s.snapshots.map((snap) => {
+              const liveTask = s.tasks.find((t) => t.name === snap.name);
+              return html`
+                <tr class="task-row" style="--c:var(--teal)">
+                  <td class="col-name">
+                    <span class="row task-row-ws">
+                      ${icon("save", 13, { color: "var(--teal)" })}
+                      <span class="task-row-name ellipsis" title=${snap.path}
+                        ><bdi dir="ltr">${snap.name}.tar.gz</bdi></span
+                      >
+                    </span>
+                  </td>
+                  <td class="col-repos">
+                    ${
+                      liveTask
+                        ? renderPhaseBadge(liveTask.phase)
+                        : html`<span class="caption faint"
+                            >Post-mortem archive (task deleted)</span
+                          >`
+                    }
+                  </td>
+                  <td class="col-mcp num">${formatBytes(snap.sizeBytes)}</td>
+                  <td class="col-files mono">${snap.updatedAt}</td>
+                  <td class="col-actions">
+                    <div class="task-row-actions">
+                      <button
+                        class="btn small ghost"
+                        title="Browse and read files inside ${snap.name}.tar.gz"
+                        aria-label="Inspect snapshot ${snap.name}"
+                        @click=${() => void this.openSnapshot(snap)}
+                      >
+                        ${icon("eye", 12)} Inspect
+                      </button>
+                      <button
+                        class="btn ghost small icon danger"
+                        title="Delete snapshot archive"
+                        aria-label="Delete snapshot ${snap.name}"
+                        @click=${() => void store.removeSnapshot(snap)}
+                      >
+                        ${icon("trash", 12)}
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              `;
+            })}
+          </tbody>
+        </table>
+      </div>
+    `;
+  }
+
+  private renderSnapshotModal(snap: WorkspaceSnapshot) {
+    const close = () => {
+      this.activeSnapshot = null;
+    };
+    const fileContent =
+      (this.selectedSnapshotFile &&
+        this.snapshotPreviews[this.selectedSnapshotFile]) ||
+      "";
+    return html`
+      <div class="modal-backdrop" @mousedown=${close}>
+        <div
+          class="modal card fade-in snap-modal"
+          role="dialog"
+          aria-label="Inspect workspace snapshot"
+          @mousedown=${(e: Event) => e.stopPropagation()}
+        >
+          <div class="row" style="margin-bottom:10px">
+            ${icon("save", 16, { color: "var(--teal)" })}
+            <h3 style="margin:0">
+              Snapshot “<bdi dir="ltr">${snap.name}.tar.gz</bdi>”
+            </h3>
+            <span class="caption faint">${snap.updatedAt}</span>
+            <span class="spacer"></span>
+            <button
+              class="btn small ghost icon"
+              aria-label="Close snapshot inspector"
+              @click=${close}
+            >
+              ${icon("x", 15)}
+            </button>
+          </div>
+          <p class="caption faint mono" style="margin:0 0 12px">
+            <bdi dir="ltr">${snap.path}</bdi>
+          </p>
+          ${
+            this.loadingSnapshot
+              ? html`<div class="empty" style="padding:24px">
+                  <span class="faint">Reading archive contents…</span>
+                </div>`
+              : this.snapshotFiles.length === 0
+                ? html`<div class="empty" style="padding:24px">
+                    <span class="faint">No files found in archive.</span>
+                  </div>`
+                : html`
+                    <div class="snap-grid">
+                      <div
+                        class="snap-files"
+                        role="listbox"
+                        aria-label="Snapshot files"
+                      >
+                        ${this.snapshotFiles.map(
+                          (f) => html`
+                            <button
+                              class="snap-file-btn ${
+                                f === this.selectedSnapshotFile ? "active" : ""
+                              }"
+                              role="option"
+                              aria-selected=${
+                                f === this.selectedSnapshotFile
+                                  ? "true"
+                                  : "false"
+                              }
+                              @click=${() => (this.selectedSnapshotFile = f)}
+                            >
+                              ${icon("file-text", 12, { color: "var(--teal)" })}
+                              <span class="ellipsis"
+                                ><bdi dir="ltr">${f}</bdi></span
+                              >
+                            </button>
+                          `,
+                        )}
+                      </div>
+                      <div class="snap-preview selectable">
+                        <div class="row snap-preview-head">
+                          <strong class="mono ellipsis"
+                            ><bdi dir="ltr"
+                              >${this.selectedSnapshotFile ?? ""}</bdi
+                            ></strong
+                          >
+                          <span class="spacer"></span>
+                          ${
+                            fileContent
+                              ? html`<button
+                                  class="btn small ghost"
+                                  @click=${() =>
+                                    void navigator.clipboard.writeText(
+                                      fileContent,
+                                    )}
+                                >
+                                  ${icon("copy", 12)} Copy
+                                </button>`
+                              : nothing
+                          }
+                        </div>
+                        <pre class="snap-code">
+${
+                            fileContent ||
+                            "(Binary or >32 KiB file — inspect archive directly on disk)"
+                          }</pre>
+                      </div>
+                    </div>
+                  `
+          }
+        </div>
       </div>
     `;
   }
@@ -2329,6 +2562,74 @@ export class AxOverview extends LitElement {
       }
       .col-actions {
         width: 136px;
+      }
+      .snap-modal {
+        width: 720px;
+        max-width: calc(100vw - 32px);
+      }
+      .snap-grid {
+        display: grid;
+        grid-template-columns: 220px minmax(0, 1fr);
+        gap: 12px;
+        height: 360px;
+      }
+      .snap-files {
+        border: 1px solid var(--border);
+        border-radius: var(--radius-s);
+        background: var(--surface-container);
+        padding: 6px;
+        overflow-y: auto;
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+      }
+      .snap-file-btn {
+        border: 0;
+        background: transparent;
+        color: var(--on-surface-variant);
+        font: inherit;
+        font-size: 12px;
+        padding: 6px 8px;
+        border-radius: var(--radius-xs);
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        cursor: pointer;
+        text-align: left;
+      }
+      .snap-file-btn:hover {
+        background: var(--state-hover);
+        color: var(--on-surface);
+      }
+      .snap-file-btn.active {
+        background: var(--accent-soft);
+        color: var(--on-surface);
+        font-weight: 600;
+      }
+      .snap-preview {
+        border: 1px solid var(--border);
+        border-radius: var(--radius-s);
+        background: var(--surface-container);
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
+        overflow: hidden;
+      }
+      .snap-preview-head {
+        padding: 6px 10px;
+        border-bottom: 1px solid var(--border);
+        font-size: 12px;
+      }
+      .snap-code {
+        margin: 0;
+        padding: 10px 12px;
+        font-family: var(--font-mono);
+        font-size: 11.5px;
+        line-height: 1.45;
+        overflow: auto;
+        flex: 1;
+        white-space: pre-wrap;
+        word-break: break-word;
       }
       .col-repos {
         width: 24%;
