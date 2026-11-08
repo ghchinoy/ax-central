@@ -94,6 +94,7 @@ export interface TaskDetail {
   image?: string;
   command: string[];
   env: { name: string; value: string }[];
+  targets?: string[];
   cpu?: string;
   memory?: string;
   debug: boolean;
@@ -228,16 +229,33 @@ export function parseTaskYAML(text: string): TaskDetail {
   const doc: any = parseYAML(text) ?? {};
   const spec = doc.spec ?? {};
   const status = doc.status ?? {};
+  const env: { name: string; value: string }[] = Array.isArray(spec.env)
+    ? spec.env.map((e: any) => ({
+        name: String(e.name ?? ""),
+        value: String(e.value ?? ""),
+      }))
+    : [];
+  const cfgTargets = spec.config?.targets ?? spec.config?.subAgents;
+  let targets: string[] = Array.isArray(cfgTargets)
+    ? cfgTargets.map((t: any) => String(t).trim()).filter(Boolean)
+    : [];
+  if (targets.length === 0) {
+    const envTarget = env.find(
+      (e) => e.name === "AX_TARGETS" || e.name === "DGEM_TARGETS",
+    );
+    if (envTarget?.value) {
+      targets = envTarget.value
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+    }
+  }
   return {
     workspace: spec.workspace?.name,
     image: spec.image,
     command: Array.isArray(spec.command) ? spec.command.map(String) : [],
-    env: Array.isArray(spec.env)
-      ? spec.env.map((e: any) => ({
-          name: String(e.name ?? ""),
-          value: String(e.value ?? ""),
-        }))
-      : [],
+    env,
+    ...(targets.length > 0 ? { targets } : {}),
     cpu: spec.resources?.limits?.cpu,
     memory: spec.resources?.limits?.memory,
     debug: !!spec.debug,

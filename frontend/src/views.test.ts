@@ -488,13 +488,48 @@ describe("WebMCP ToolHost & AX tools", () => {
     await store.resumeAll();
     expect(store.state.activity[0]?.title).toBe("Resume 2 tasks");
 
-    // 4. Map: verify topology graph renders Workspace -> Task edge
+    // Verify "This session" sparkline renders SVG-namespaced paths when history >= 2 (ax-central-oc8)
+    await store.refresh(true);
+    await (overviewEl as unknown as { updateComplete: Promise<boolean> })
+      .updateComplete;
+    const sparkPath = overviewEl.shadowRoot!.querySelector(
+      ".digest-spark svg path",
+    );
+    expect(sparkPath).not.toBeNull();
+    expect(sparkPath?.namespaceURI).toBe("http://www.w3.org/2000/svg");
+
+    // 4. Map: verify topology graph renders Workspace -> Task edge and AX_TARGETS router -> specialist edges (ax-central-a5z, ax-central-97s)
+    const routerDetail = parseTaskYAML(
+      'apiVersion: ax.io/v1alpha1\nkind: Task\nmetadata:\n  name: dgem-router\nspec:\n  env:\n    - name: AX_TARGETS\n      value: "gemini-a1b2c3,shell-task-01"\n',
+    );
+    expect(routerDetail.targets).toEqual(["gemini-a1b2c3", "shell-task-01"]);
+    store.set({
+      tasks: [
+        ...store.state.tasks,
+        {
+          id: "default/dgem-router",
+          name: "dgem-router",
+          atespace: "default",
+          phase: "running",
+          age: "1m",
+        },
+      ],
+      details: {
+        ...store.state.details,
+        "default/dgem-router": routerDetail,
+      },
+    });
     store.setSection("topology");
     await el.updateComplete;
     const topoEl = el.shadowRoot!.querySelector("ax-topology")!;
+    await (topoEl as unknown as { updateComplete: Promise<boolean> })
+      .updateComplete;
     expect(
       topoEl.shadowRoot!.querySelectorAll(".topo-node").length,
-    ).toBeGreaterThanOrEqual(3);
+    ).toBeGreaterThanOrEqual(4);
+    expect(
+      topoEl.shadowRoot!.querySelectorAll(".topo-edge").length,
+    ).toBeGreaterThanOrEqual(4);
 
     // 5. Terminal: open ax ssh session tab for running task
     const runningTask = store.state.tasks[0]!;

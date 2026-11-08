@@ -32,9 +32,10 @@ import "./overview-view";
 
 type Kind =
   | { type: "repo"; repo: GitRepo }
+  | { type: "file"; path: string }
   | { type: "mcp"; name: string; endpoint: string }
   | { type: "workspace"; ws: AXWorkspace | null }
-  | { type: "task"; task: AXTask };
+  | { type: "task"; task: AXTask; isRouter?: boolean };
 
 interface GraphNode {
   id: string;
@@ -50,6 +51,7 @@ interface GraphEdge {
   d: string;
   color: string;
   flowing: boolean;
+  dashed?: boolean;
 }
 
 const NODE_W = 200;
@@ -66,24 +68,42 @@ function curve(ax: number, ay: number, bx: number, by: number): string {
   return `M${ax},${ay} C${ax + dx},${ay} ${bx - dx},${by} ${bx},${by}`;
 }
 
+function rightArc(ax: number, ay: number, bx: number, by: number): string {
+  const spread = Math.max(70, Math.min(140, Math.abs(by - ay) * 0.45));
+  return `M${ax},${ay} C${ax + spread},${ay} ${bx + spread},${by} ${bx},${by}`;
+}
+
 function layoutGraph(s: State) {
   const nodes: GraphNode[] = [];
   const edges: GraphEdge[] = [];
   let y = TOP;
 
+  const taskByName = new Map(s.tasks.map((t) => [t.name, t]));
+  const targetsFor = (t: AXTask): AXTask[] =>
+    (s.details[t.id]?.targets ?? [])
+      .map((name) => taskByName.get(name))
+      .filter((x): x is AXTask => Boolean(x));
+  const isRouter = (t: AXTask) => targetsFor(t).length > 0;
+
   const tasksUsing = (ws: string) =>
     s.tasks.filter((t) => s.details[t.id]?.workspace === ws);
   const groups: { ws: AXWorkspace | null; tasks: AXTask[] }[] =
     s.workspaces.map((ws) => ({ ws, tasks: tasksUsing(ws.name) }));
+
   const unbound = s.tasks.filter((t) => {
     const w = s.details[t.id]?.workspace;
     return !w || !s.workspaces.some((ws) => ws.name === w);
   });
-  if (unbound.length) groups.push({ ws: null, tasks: unbound });
+  const unboundRouters = unbound.filter((t) => isRouter(t));
+  const unboundPlain = unbound.filter((t) => !isRouter(t));
+  if (unboundPlain.length) groups.push({ ws: null, tasks: unboundPlain });
+
+  const taskNodeByName = new Map<string, GraphNode>();
 
   for (const g of groups) {
     const sources: Kind[] = [
       ...(g.ws?.repos.map((repo): Kind => ({ type: "repo", repo })) ?? []),
+      ...(g.ws?.files.map((path): Kind => ({ type: "file", path })) ?? []),
       ...(g.ws?.mcpServers.map((m): Kind => ({
         type: "mcp",
         name: m.name,
@@ -107,7 +127,9 @@ function layoutGraph(s: State) {
       const id =
         src.type === "repo"
           ? `repo:${wsID}:${src.repo.name}:${src.repo.repo}`
-          : `mcp:${wsID}:${src.type === "mcp" ? src.name : i}`;
+          : src.type === "file"
+            ? `file:${wsID}:${src.path}`
+            : `mcp:${wsID}:${src.type === "mcp" ? src.name : i}`;
       const cy = stackY(i, sources.length);
       nodes.push({ id, kind: src, x: COLUMN_X[0], y: cy });
       edges.push({
@@ -122,12 +144,14 @@ function layoutGraph(s: State) {
     g.tasks.forEach((t, i) => {
       const id = `task:${t.id}`;
       const cy = stackY(i, g.tasks.length);
-      nodes.push({
+      const node: GraphNode = {
         id,
-        kind: { type: "task", task: t },
+        kind: { type: "task", task: t, isRouter: isRouter(t) },
         x: COLUMN_X[2],
         y: cy,
-      });
+      };
+      nodes.push(node);
+      taskNodeByName.set(t.name, node);
       edges.push({
         id: `${wsID}->${id}`,
         from: wsID,
@@ -140,10 +164,75 @@ function layoutGraph(s: State) {
     y += height + GROUP_GAP;
   }
 
+  // Place unbound router tasks (e.g. dgem-router) at COLUMN_X[1] so they fan out
+  // cleanly left-to-right into their specialist target tasks in COLUMN_X[2].
+  for (const r of unboundRouters) {
+    const id = `task:${r.id}`;
+    const targets = targetsFor(r)
+      .map((t) => taskNodeByName.get(t.name))
+      .filter((n): n is GraphNode => Boolean(n));
+    let ry: number;
+    if (targets.length > 0 && groups.length === 0) {
+      ry =
+        targets.reduce((sum, n) => sum + n.y, 0) / Math.max(1, targets.length);
+    } else {
+      const height = ROW_H;
+      ry = y + height / 2;
+      y += height + GROUP_GAP;
+    }
+    const node: GraphNode = {
+      id,
+      kind: { type: "task", task: r, isRouter: true },
+      x: COLUMN_X[1],
+      y: ry,
+    };
+    nodes.push(node);
+    taskNodeByName.set(r.name, node);
+  }
+
+  // Emit task-to-task routing edges for all router tasks
+  let hasRightArc = false;
+  for (const r of s.tasks) {
+    const fromNode = taskNodeByName.get(r.name);
+    if (!fromNode) continue;
+    for (const targetTask of targetsFor(r)) {
+      const toNode = taskNodeByName.get(targetTask.name);
+      if (!toNode || toNode.id === fromNode.id) continue;
+      const sameCol = fromNode.x === toNode.x;
+      if (sameCol) hasRightArc = true;
+      const d = sameCol
+        ? rightArc(
+            fromNode.x + NODE_W / 2,
+            fromNode.y,
+            toNode.x + NODE_W / 2,
+            toNode.y,
+          )
+        : curve(
+            fromNode.x + NODE_W / 2,
+            fromNode.y,
+            toNode.x - NODE_W / 2,
+            toNode.y,
+          );
+      edges.push({
+        id: `${fromNode.id}->${toNode.id}`,
+        from: fromNode.id,
+        to: toNode.id,
+        d,
+        color: phaseColor(targetTask.phase),
+        flowing: targetTask.phase === "running",
+        dashed: targetTask.phase !== "running",
+      });
+    }
+  }
+
   const left = nodes.length
     ? Math.min(...nodes.map((n) => n.x)) - NODE_W / 2 - 30
     : 0;
-  const width = COLUMN_X[COLUMN_X.length - 1] + NODE_W / 2 + 30 - left;
+  const rightPad = hasRightArc ? 150 : 30;
+  const maxRight = nodes.length
+    ? Math.max(...nodes.map((n) => n.x))
+    : COLUMN_X[COLUMN_X.length - 1];
+  const width = maxRight + NODE_W / 2 + rightPad - left;
   return { nodes, edges, left, width, height: y + 20 };
 }
 
@@ -163,6 +252,14 @@ function describeNode(k: Kind): {
         subtitle: `${k.repo.branch} · ${k.repo.name}`,
         tooltip: k.repo.repo,
       };
+    case "file":
+      return {
+        iconName: "file-text",
+        tint: "var(--teal)",
+        title: k.path.split("/").pop() || k.path,
+        subtitle: k.path,
+        tooltip: k.path,
+      };
     case "mcp":
       return {
         iconName: "plug",
@@ -181,21 +278,27 @@ function describeNode(k: Kind): {
           tooltip: "Tasks with no Workspace start in an empty /workspace",
         };
       const n = k.ws.repos.length || k.ws.gitCount;
+      const f = k.ws.files.length;
       const m = k.ws.mcpServers.length || k.ws.mcpCount;
+      const parts = [
+        `${n} repo${n === 1 ? "" : "s"}`,
+        ...(f > 0 ? [`${f} file${f === 1 ? "" : "s"}`] : []),
+        `${m} MCP`,
+      ];
       return {
         iconName: "folder-git",
         tint: "var(--purple)",
         title: k.ws.name,
-        subtitle: `${n} repo${n === 1 ? "" : "s"} · ${m} MCP`,
+        subtitle: parts.join(" · "),
         tooltip: k.ws.name,
       };
     }
     case "task":
       return {
-        iconName: "box",
+        iconName: k.isRouter ? "network" : "box",
         tint: phaseColor(k.task.phase),
         title: k.task.name,
-        subtitle: `${phaseLabel(k.task.phase)} · ${k.task.age}`,
+        subtitle: `${k.isRouter ? "Router · " : ""}${phaseLabel(k.task.phase)} · ${k.task.age}`,
         tooltip: `${k.task.name} — click for details`,
       };
   }
@@ -235,12 +338,27 @@ export class AxTopology extends LitElement {
       if (e.from === this.hover) set.add(e.to);
       if (e.to === this.hover) set.add(e.from);
     }
-    if (this.hover.startsWith("repo:") || this.hover.startsWith("mcp:")) {
+    if (
+      this.hover.startsWith("repo:") ||
+      this.hover.startsWith("file:") ||
+      this.hover.startsWith("mcp:")
+    ) {
       for (const e of edges)
         if (e.from.startsWith("ws:") && set.has(e.from)) set.add(e.to);
     } else if (this.hover.startsWith("task:")) {
-      for (const e of edges)
+      for (const e of edges) {
         if (e.to.startsWith("ws:") && set.has(e.to)) set.add(e.from);
+        if (e.to.startsWith("task:") && set.has(e.to)) {
+          for (const we of edges) {
+            if (we.to === e.to && we.from.startsWith("ws:")) {
+              set.add(we.from);
+              for (const se of edges) {
+                if (se.to === we.from) set.add(se.from);
+              }
+            }
+          }
+        }
+      }
     }
     return set;
   }
@@ -344,6 +462,7 @@ export class AxTopology extends LitElement {
                                   d=${e.d}
                                   fill="none"
                                   stroke=${e.color}
+                                  stroke-dasharray=${e.dashed ? "5 5" : "none"}
                                   stroke-opacity=${e.color === "var(--purple)" ? 0.55 : 0.8}
                                   stroke-width=${lit && edgeLit(e) ? 2.5 : 1.6}
                                 />

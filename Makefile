@@ -50,7 +50,7 @@ build: frontend/dist
 	go build $(WAILS_TAGS) -ldflags "$(LDFLAGS)" -o ax-central .
 
 wails-build: frontend/node_modules
-	"$(WAILS)" build $(WAILS_TAGS) -ldflags "$(LDFLAGS)"
+	"$(WAILS)" build -nosyncgomod $(WAILS_TAGS) -ldflags "$(LDFLAGS)"
 
 version:
 	@echo "$(VERSION)"

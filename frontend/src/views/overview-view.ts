@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { css, html, LitElement, nothing } from "lit";
+import { css, html, LitElement, nothing, svg } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import {
   type IconName,
@@ -768,7 +768,7 @@ export class AxOverview extends LitElement {
                 aria-hidden="true"
               >
                 ${chart.map(
-                  (b) => html`
+                  (b) => svg`
                     <g>
                       <path
                         d=${b.d}

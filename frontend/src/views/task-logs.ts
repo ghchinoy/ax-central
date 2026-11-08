@@ -159,6 +159,7 @@ export class AxTaskLogs extends LitElement {
   private cleanupStream: (() => void) | null = null;
   private offStore: (() => void) | null = null;
   private lastKey = "";
+  private lastTaskID = "";
 
   override connectedCallback(): void {
     super.connectedCallback();
@@ -216,6 +217,9 @@ export class AxTaskLogs extends LitElement {
       status: fields.status,
     };
     const existing = this.genkitSpans.get(traceID) ?? [];
+    if (existing.some((s) => s.spanID === sp.spanID && s.name === sp.name)) {
+      return;
+    }
     this.genkitSpans.set(
       traceID,
       [...existing, sp].sort((a, b) => a.startNano - b.startNano),
@@ -300,7 +304,8 @@ export class AxTaskLogs extends LitElement {
     if (!this.task) return;
     const ctx = store.state.context;
     const isLocal = ctx === "local";
-    const key = `${ctx}:${this.task.atespace}/${this.task.name}:${this.task.actor ?? ""}`;
+    const taskID = `${ctx}:${this.task.atespace}/${this.task.name}`;
+    const key = `${taskID}:${this.task.actor ?? ""}:${this.task.phase}`;
     if (!force && key === this.lastKey) return;
     this.lastKey = key;
 
@@ -310,11 +315,14 @@ export class AxTaskLogs extends LitElement {
 
     ensureStudioBridge();
     this.lines = [];
-    this.telemetry = {};
-    this.genkitSpans = new Map();
-    this.traceLabels = new Map();
-    this.selectedTraceID = null;
-    this.loadedTraceSpans = [];
+    if (taskID !== this.lastTaskID) {
+      this.lastTaskID = taskID;
+      this.telemetry = {};
+      this.genkitSpans = new Map();
+      this.traceLabels = new Map();
+      this.selectedTraceID = null;
+      this.loadedTraceSpans = [];
+    }
     this.status = "following";
     this.error = "";
 

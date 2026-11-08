@@ -431,25 +431,32 @@ export class Store extends EventTarget {
         : this.state.workspaces;
       const counts: Record<string, number> = {};
       for (const t of tasks) counts[t.phase] = (counts[t.phase] ?? 0) + 1;
+      const fetched = await this.fetchDetails(tasks, workspaces);
       this.set({
         connectionError: null,
         tasks: same(tasks, this.state.tasks) ? this.state.tasks : tasks,
         ...this.takeAskedTask(tasks),
-        workspaces,
+        workspaces: fetched.workspaces,
+        details: fetched.details,
         models: mr.ok ? parseModels(mr.stdout) : this.state.models,
         lastRefresh: Date.now(),
         history: [...this.state.history, { date: Date.now(), counts }].slice(
           -360,
         ),
       });
-      await this.loadDetails();
     } finally {
       this.set({ isRefreshing: false });
     }
   }
 
-  private async loadDetails(): Promise<void> {
-    const tasks = this.state.tasks.filter((t) => isSafeResourceName(t.name));
+  private async fetchDetails(
+    taskList: AXTask[],
+    workspaceList: AXWorkspace[],
+  ): Promise<{
+    details: Record<string, TaskDetail>;
+    workspaces: AXWorkspace[];
+  }> {
+    const tasks = taskList.filter((t) => isSafeResourceName(t.name));
     const results = await Promise.all(
       tasks.map((t) => this.ax(["get", "task", t.name])),
     );
@@ -460,7 +467,7 @@ export class Store extends EventTarget {
       else if (this.state.details[t.id])
         details[t.id] = this.state.details[t.id];
     });
-    const safeWorkspaces = this.state.workspaces.filter((w) =>
+    const safeWorkspaces = workspaceList.filter((w) =>
       isSafeResourceName(w.name),
     );
     const wsResults = await Promise.all(
@@ -472,8 +479,8 @@ export class Store extends EventTarget {
         wsMap.set(w.id, parseWorkspaceYAML(wsResults[i].stdout, w));
       }
     });
-    const workspaces = this.state.workspaces.map((w) => wsMap.get(w.id) ?? w);
-    this.set({ details, workspaces });
+    const workspaces = workspaceList.map((w) => wsMap.get(w.id) ?? w);
+    return { details, workspaces };
   }
 
   private invalidNameResult(name: string): Result {
