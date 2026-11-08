@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and [Common Changelog](https://common-changelog.org/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.2] - 2026-11-08
+
+### Added
+- **Dual `ate-local` Cluster Discovery & Management (`Cluster A :8090` & `Cluster B :8091`):** Auto-discover and manage both Apple `container` (`local` · `:8090` / `:50051`) and Podman (`local-podman` · `:8091` / `:50052`) local stacks (`local-stack.sh multi-up` / `multi-down`), render the Podman Cluster B card in `<ax-clusters>`, and preserve unpinned task images when migrating tasks between Cluster A and Cluster B (`[ax-central-77l]`).
+- **Expandable & Draggable Task Inspector (`<ax-task-inspector>`):** Added a 1-click Wide toggle button (`380px` $\leftrightarrow$ `640px`) in the inspector header and a draggable left-edge resize handle (`340px`–`780px`, persisted in `localStorage` under `ax-central.inspector.width`) with proportional OpenTelemetry Trace Waterfall column scaling (`[ax-central-bg5]`).
+- **Cluster Context in Task Inspector & `From -> To` Route Banner in Move Modal (`<ax-task-inspector>`, `<ax-move-task-modal>`):** Display the active cluster in `<ax-task-inspector>` and a `Current cluster -> Destination cluster` route summary card in `<ax-move-task-modal>` (`[ax-central-6uz]`).
+
+### Fixed
+- **Local Container Log Resolution Across `ate-apple-*`, `ate-podman-*`, and 48-Char Truncated Names (`<ax-task-logs>`):** Match `ate-apple-<atespace>-<task>`, `ate-podman-<atespace>-<task>`, `ate-cluster-b-<atespace>-<task>`, and 48-character hash-truncated container names across both Apple `container` and `podman` (`[ax-central-pvz]`).
+- **Single-Window `Open in Ghostty` Launch (`<ax-terminal-session>`):** Pass `--window-save-state=never` and `--quit-after-last-window-closed=true` when launching `/Applications/Ghostty.app/Contents/MacOS/ghostty` so only a single window/tab opens for the task's `ax ssh` session (`[ax-central-s83]`).
+- **Move Task Modal Input Overflow (`<ax-move-task-modal>`):** Use `minmax(0, ...)` grid tracks and `min-width: 0` / `box-sizing: border-box` on `.move-form` fields so long context names never push the destination atespace input past the modal edge (`[ax-central-6uz]`).
+
 ## [0.4.1] - 2026-11-08
 
 ### Changed
@@ -77,6 +89,7 @@ _Initial release._
 ### Security
 - **WebMCP Argument-Injection & STDIO MCP Guards:** Enforced `reqSafeName` validation across all WebMCP tool inputs to reject leading `-` CLI flags, added `mcp-auditor` warnings for shell wrappers in Workspace STDIO MCP servers, and added `make security` (`npm audit` + Go readability checks) (`[ax-central-hw9]`).
 
+[0.4.2]: https://github.com/ghchinoy/ax-central/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/ghchinoy/ax-central/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/ghchinoy/ax-central/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/ghchinoy/ax-central/compare/v0.2.0...v0.3.0
