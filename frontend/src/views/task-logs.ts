@@ -1060,7 +1060,7 @@ export class AxTaskLogs extends LitElement {
       }
       .wf-row {
         display: grid;
-        grid-template-columns: 92px minmax(90px, 1fr) 80px 48px;
+        grid-template-columns: 92px 1.2fr 1fr 50px;
         align-items: center;
         gap: 6px;
         font-size: 11px;

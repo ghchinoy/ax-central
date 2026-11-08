@@ -451,6 +451,31 @@ describe("WebMCP ToolHost & AX tools", () => {
     ].map((n) => n.textContent);
     expect(taskLogLines).toContain("Linux aarch64");
 
+    // Verify <ax-task-inspector> expandable width toggle & localStorage persistence (ax-central-bg5)
+    const asideEl = inspectorEl.shadowRoot!.querySelector<HTMLElement>(
+      "aside.inspector.open",
+    )!;
+    expect(asideEl.getAttribute("style")).toContain("--inspector-w:380px");
+    const expandBtn = inspectorEl.shadowRoot!.querySelector<HTMLButtonElement>(
+      'button[aria-label="Expand inspector width"]',
+    )!;
+    expect(expandBtn).not.toBeNull();
+    expandBtn.click();
+    await (inspectorEl as unknown as { updateComplete: Promise<boolean> })
+      .updateComplete;
+    expect(asideEl.getAttribute("style")).not.toContain("--inspector-w:380px");
+    expect(
+      Number(localStorage.getItem("ax-central.inspector.width")),
+    ).toBeGreaterThan(380);
+    const restoreBtn = inspectorEl.shadowRoot!.querySelector<HTMLButtonElement>(
+      'button[aria-label="Restore inspector width"]',
+    )!;
+    expect(restoreBtn).not.toBeNull();
+    restoreBtn.click();
+    await (inspectorEl as unknown as { updateComplete: Promise<boolean> })
+      .updateComplete;
+    expect(asideEl.getAttribute("style")).toContain("--inspector-w:380px");
+
     // Verify Genkit OTel span & trace pill parsing in <ax-task-logs>
     const tracePill =
       logsEl.shadowRoot!.querySelector<HTMLButtonElement>(".trace-pill")!;

@@ -121,6 +121,20 @@ export function actionsForTask(
   return a;
 }
 
+const INSPECTOR_WIDTH_KEY = "ax-central.inspector.width";
+const INSPECTOR_DEFAULT_WIDTH = 380;
+const INSPECTOR_WIDE_WIDTH = 640;
+const INSPECTOR_MIN_WIDTH = 340;
+const INSPECTOR_MAX_WIDTH = 780;
+
+function loadInspectorWidth(): number {
+  const raw = Number(localStorage.getItem(INSPECTOR_WIDTH_KEY));
+  if (!Number.isFinite(raw) || raw < INSPECTOR_MIN_WIDTH) {
+    return INSPECTOR_DEFAULT_WIDTH;
+  }
+  return Math.min(INSPECTOR_MAX_WIDTH, Math.round(raw));
+}
+
 @customElement("ax-task-inspector")
 export class AxTaskInspector extends LitElement {
   @property({ attribute: false }) task: AXTask | null = null;
@@ -128,10 +142,13 @@ export class AxTaskInspector extends LitElement {
   @state() private copied = false;
   @state() private confirmDelete: AXTask | null = null;
   @state() private movingTask: AXTask | null = null;
+  @state() private inspectorWidth = loadInspectorWidth();
+  @state() private dragging = false;
   private offStore: (() => void) | null = null;
 
   override connectedCallback(): void {
     super.connectedCallback();
+    this.inspectorWidth = loadInspectorWidth();
     this.offStore = store.subscribe(() => this.requestUpdate());
   }
 
@@ -139,6 +156,45 @@ export class AxTaskInspector extends LitElement {
     super.disconnectedCallback();
     this.offStore?.();
   }
+
+  private setInspectorWidth(w: number): void {
+    const clamped = Math.max(
+      INSPECTOR_MIN_WIDTH,
+      Math.min(INSPECTOR_MAX_WIDTH, Math.round(w)),
+    );
+    this.inspectorWidth = clamped;
+    localStorage.setItem(INSPECTOR_WIDTH_KEY, String(clamped));
+  }
+
+  private toggleInspectorWidth(): void {
+    const next =
+      this.inspectorWidth > INSPECTOR_DEFAULT_WIDTH
+        ? INSPECTOR_DEFAULT_WIDTH
+        : INSPECTOR_WIDE_WIDTH;
+    this.setInspectorWidth(next);
+  }
+
+  private resetInspectorWidth = (): void => {
+    this.setInspectorWidth(INSPECTOR_DEFAULT_WIDTH);
+  };
+
+  private startResize = (e: MouseEvent): void => {
+    e.preventDefault();
+    const rightEdge = this.getBoundingClientRect().right;
+    this.dragging = true;
+    const move = (ev: MouseEvent) => {
+      this.setInspectorWidth(rightEdge - ev.clientX);
+    };
+    const up = () => {
+      this.dragging = false;
+      window.removeEventListener("mousemove", move);
+      window.removeEventListener("mouseup", up);
+      document.body.style.cursor = "";
+    };
+    document.body.style.cursor = "col-resize";
+    window.addEventListener("mousemove", move);
+    window.addEventListener("mouseup", up);
+  };
 
   private async copyManifest(manifest?: string): Promise<void> {
     if (!manifest) return;
@@ -254,11 +310,23 @@ export class AxTaskInspector extends LitElement {
         ]
       : [];
 
+    const isWide = this.inspectorWidth > INSPECTOR_DEFAULT_WIDTH;
+
     return html`
-      <aside class="inspector ${t ? "open" : ""}" aria-label="Task inspector">
+      <aside
+        class="inspector ${t ? "open" : ""} ${this.dragging ? "dragging" : ""}"
+        style=${t ? `--inspector-w:${this.inspectorWidth}px` : ""}
+        aria-label="Task inspector"
+      >
         ${
           t
             ? html`
+                <div
+                  class="inspector-resizer"
+                  title="Drag to resize · Double-click to reset width"
+                  @mousedown=${this.startResize}
+                  @dblclick=${this.resetInspectorWidth}
+                ></div>
                 <div class="inspector-inner fade-in">
                   <header class="inspector-head">
                     <div class="col" style="gap:6px;min-width:0">
@@ -275,6 +343,22 @@ export class AxTaskInspector extends LitElement {
                       </div>
                     </div>
                     <span class="spacer"></span>
+                    <button
+                      class="btn ghost icon small"
+                      title=${
+                        isWide
+                          ? "Restore default inspector width (380px)"
+                          : "Expand inspector width (640px)"
+                      }
+                      aria-label=${
+                        isWide
+                          ? "Restore inspector width"
+                          : "Expand inspector width"
+                      }
+                      @click=${() => this.toggleInspectorWidth()}
+                    >
+                      ${icon(isWide ? "minimize" : "maximize", 14)}
+                    </button>
                     <button
                       class="btn ghost icon small"
                       title="Close"
@@ -472,6 +556,7 @@ export class AxTaskInspector extends LitElement {
         height: 100%;
       }
       .inspector {
+        position: relative;
         width: 0;
         flex: none;
         overflow: hidden;
@@ -480,12 +565,30 @@ export class AxTaskInspector extends LitElement {
         background: var(--surface-bright);
       }
       .inspector.open {
-        width: 380px;
+        width: min(var(--inspector-w, 380px), 65vw);
         border-left-color: var(--border);
         box-shadow: var(--shadow-1);
       }
+      .inspector.dragging {
+        transition: none;
+        user-select: none;
+      }
+      .inspector-resizer {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        left: 0;
+        width: 5px;
+        cursor: col-resize;
+        z-index: 3;
+      }
+      .inspector-resizer:hover,
+      .inspector.dragging .inspector-resizer {
+        background: color-mix(in srgb, var(--primary) 45%, transparent);
+      }
       .inspector-inner {
-        width: 380px;
+        width: 100%;
+        min-width: 340px;
         height: 100%;
         display: flex;
         flex-direction: column;
