@@ -6,7 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and [Common Changelog](https://common-changelog.org/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.4.0] - 2026-11-08
 
 ### Added
 - **Cross-Context & Cross-Atespace Move Task (`<ax-move-task-modal>`, `move.ts`, `Shell.Pipe`, WebMCP `move_task`):** Recreate any task with `spec.debug: true` in another context or atespace and stream `/workspace` files directly between source and destination sandboxes over `ax ssh` (`tar cf - | tar xf -`) via a Go OS pipe (`[ax-central-n0a.1]`, `[ax-central-n0a.5]`).
@@ -71,6 +71,7 @@ _Initial release._
 ### Security
 - **WebMCP Argument-Injection & STDIO MCP Guards:** Enforced `reqSafeName` validation across all WebMCP tool inputs to reject leading `-` CLI flags, added `mcp-auditor` warnings for shell wrappers in Workspace STDIO MCP servers, and added `make security` (`npm audit` + Go readability checks) (`[ax-central-hw9]`).
 
+[0.4.0]: https://github.com/ghchinoy/ax-central/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/ghchinoy/ax-central/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/ghchinoy/ax-central/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/ghchinoy/ax-central/releases/tag/v0.1.0
