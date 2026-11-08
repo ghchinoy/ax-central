@@ -615,9 +615,18 @@ export const TOOLS: ToolDef[] = [
       {
         action: {
           type: "string",
-          enum: ["status", "up", "down", "reset", "use"],
+          enum: [
+            "status",
+            "up",
+            "down",
+            "reset",
+            "use",
+            "multi-up",
+            "multi-down",
+            "use-b",
+          ],
           description:
-            "status (refresh state), up (start stack), down (stop stack), reset (clean & restart), or use (switch AX Central to local context).",
+            "status (refresh state), up (start Cluster A), down (stop stack), reset (clean & restart), use (switch to local Cluster A :8090), multi-up (start Cluster A + Podman Cluster B :8091), multi-down (stop Cluster B), or use-b (switch to local-podman Cluster B :8091).",
         },
       },
       ["action"],
@@ -638,10 +647,23 @@ export const TOOLS: ToolDef[] = [
           },
         };
       }
+      if (action === "use-b") {
+        await ctx.clusters.openLocalClusterB();
+        return {
+          result: {
+            context: ctx.store.state.context,
+            atespace: ctx.store.state.atespace,
+          },
+        };
+      }
       let ok = false;
       if (action === "up") ok = await ctx.clusters.localStackUp();
       else if (action === "down") ok = await ctx.clusters.localStackDown();
       else if (action === "reset") ok = await ctx.clusters.localStackReset();
+      else if (action === "multi-up")
+        ok = await ctx.clusters.localStackMultiUp();
+      else if (action === "multi-down")
+        ok = await ctx.clusters.localStackMultiDown();
       else throw new ToolError(`Unknown action "${action}".`);
       const logTail = ctx.clusters.state.log.slice(-20).map((l) => l.text);
       return {

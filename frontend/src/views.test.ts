@@ -163,6 +163,11 @@ describe("resources & designer models", () => {
       { context: "local", atespace: "staging" },
     );
     expect(movedLocal).toContain("image: debian:12");
+    const movedLocalPodman = portable(
+      "apiVersion: ax.io/v1alpha1\nkind: Task\nmetadata:\n  name: t1\nspec:\n  image: debian:12\n  debug: true\n",
+      { context: "local-podman", atespace: "default" },
+    );
+    expect(movedLocalPodman).toContain("image: debian:12");
     expect(
       moveSteps({ context: "local", atespace: "staging" }, false),
     ).toHaveLength(6);
@@ -647,7 +652,7 @@ describe("WebMCP ToolHost & AX tools", () => {
       topoEl.shadowRoot!.querySelectorAll(".topo-edge").length,
     ).toBeGreaterThanOrEqual(4);
 
-    // 5. Terminal: open ax ssh session tab for running task
+    // 5. Terminal: open ax ssh session tab for running task & verify Open in Ghostty flags (ax-central-s83, ax-central-77l)
     const runningTask = store.state.tasks[0]!;
     store.openTerminal(runningTask);
     await el.updateComplete;
@@ -659,6 +664,36 @@ describe("WebMCP ToolHost & AX tools", () => {
       "-a",
       "default",
     ]);
+    expect(store.scopeFor("local-podman", "default")).toEqual([
+      "--server",
+      "localhost:8091",
+      "-a",
+      "default",
+    ]);
+    const termView = el.shadowRoot!.querySelector("ax-terminal")!;
+    await (termView as unknown as { updateComplete: Promise<boolean> })
+      .updateComplete;
+    const sessEl = termView.shadowRoot!.querySelector("ax-terminal-session")!;
+    expect(sessEl).not.toBeNull();
+    await (sessEl as unknown as { updateComplete: Promise<boolean> })
+      .updateComplete;
+    let ghosttyArgs: string[] = [];
+    const prevRunForGhostty = window.studio.run;
+    window.studio.run = async (req) => {
+      if (req.program.includes("Ghostty")) {
+        ghosttyArgs = req.args;
+        return { status: 0, stdout: "", stderr: "" };
+      }
+      return prevRunForGhostty(req);
+    };
+    const ghosttyBtn = [
+      ...sessEl.shadowRoot!.querySelectorAll<HTMLButtonElement>("button"),
+    ].find((b) => b.textContent?.includes("Open in Ghostty"))!;
+    expect(ghosttyBtn).not.toBeUndefined();
+    ghosttyBtn.click();
+    expect(ghosttyArgs).toContain("--window-save-state=never");
+    expect(ghosttyArgs).toContain("--quit-after-last-window-closed=true");
+    window.studio.run = prevRunForGhostty;
 
     // 6. WebMCP task lifecycle actions (suspend -> resume -> move -> delete) + context persistence & showTask
     store.setScope({ context: "kind-ax" });

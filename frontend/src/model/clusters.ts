@@ -65,6 +65,10 @@ export interface AppleContainerStack {
   ateLocal: boolean;
   axServer: boolean;
   actors: MicroVM[];
+  ateLocalB: boolean;
+  axServerB: boolean;
+  podmanAvailable: boolean;
+  podmanActors: MicroVM[];
 }
 
 export type StageID = "kind" | "substrate" | "workers" | "ax";
@@ -136,13 +140,17 @@ rm -f "$kc"
 `;
 
 const PROBE_ATE_LOCAL = `
-pg=0; sub=0; srv=0; daemon=0; img=0
+pg=0; sub=0; srv=0; subb=0; srvb=0; daemon=0; img=0; podman=0
 nc -z 127.0.0.1 "\${AX_LOCAL_POSTGRES_PORT:-5432}" >/dev/null 2>&1 && pg=1
 nc -z 127.0.0.1 "\${AX_LOCAL_SUBSTRATE_PORT:-50051}" >/dev/null 2>&1 && sub=1
 nc -z 127.0.0.1 "\${AX_LOCAL_SERVER_PORT:-8090}" >/dev/null 2>&1 && srv=1
+nc -z 127.0.0.1 "\${AX_LOCAL_SUBSTRATE_B_PORT:-50052}" >/dev/null 2>&1 && subb=1
+nc -z 127.0.0.1 "\${AX_LOCAL_SERVER_B_PORT:-8091}" >/dev/null 2>&1 && srvb=1
 echo "postgres=$pg"
 echo "atelocal=$sub"
 echo "axserver=$srv"
+echo "atelocalb=$subb"
+echo "axserverb=$srvb"
 if command -v container >/dev/null 2>&1; then
   if container list >/dev/null 2>&1; then
     daemon=1
@@ -151,8 +159,14 @@ if command -v container >/dev/null 2>&1; then
     echo "actors=$actors"
   fi
 fi
+if command -v podman >/dev/null 2>&1; then
+  podman=1
+  pactors=$(podman ps -a --format '{{.Names}}|{{.State}}|127.0.0.1' 2>/dev/null | awk -F'|' '$1 ~ /^ate-/ {print $0}' | paste -sd, - || true)
+  echo "pactors=$pactors"
+fi
 echo "daemon=$daemon"
 echo "agentimg=$img"
+echo "podman=$podman"
 `;
 
 function replicas(v: string | undefined): Replicas {
@@ -202,6 +216,10 @@ export class ClustersStore extends EventTarget {
       ateLocal: false,
       axServer: false,
       actors: [],
+      ateLocalB: false,
+      axServerB: false,
+      podmanAvailable: false,
+      podmanActors: [],
     },
     doctor: [],
     clusters: [],
@@ -476,6 +494,7 @@ export class ClustersStore extends EventTarget {
         ]),
     );
     const actors = parseMicroVMs(kv.actors);
+    const podmanActors = parseMicroVMs(kv.pactors);
     const available = !!containerCli;
     const daemonRunning =
       kv.daemon === "1" || (available && kv.axserver === "1");
@@ -492,6 +511,10 @@ export class ClustersStore extends EventTarget {
       ateLocal: kv.atelocal === "1",
       axServer: kv.axserver === "1",
       actors,
+      ateLocalB: kv.atelocalb === "1",
+      axServerB: kv.axserverb === "1",
+      podmanAvailable: kv.podman === "1",
+      podmanActors,
     };
   }
 
@@ -683,11 +706,27 @@ export class ClustersStore extends EventTarget {
     );
   }
 
+  async localStackMultiUp(): Promise<boolean> {
+    return this.exec(
+      { kind: "local-up", cluster: "ate-local-b" },
+      "Start Dual-Cluster stack (Cluster A Apple + Cluster B Podman)",
+      `bash ${LOCAL_STACK_SCRIPT} multi-up`,
+    );
+  }
+
   async localStackDown(): Promise<boolean> {
     return this.exec(
       { kind: "local-down", cluster: "ate-local" },
       "Stop Apple Container stack (ate-local)",
       `bash ${LOCAL_STACK_SCRIPT} down`,
+    );
+  }
+
+  async localStackMultiDown(): Promise<boolean> {
+    return this.exec(
+      { kind: "local-down", cluster: "ate-local-b" },
+      "Stop Dual-Cluster stack (multi-down)",
+      `bash ${LOCAL_STACK_SCRIPT} multi-down`,
     );
   }
 
@@ -747,6 +786,12 @@ export class ClustersStore extends EventTarget {
 
   async openLocalStack(): Promise<void> {
     store.setScope({ context: "local" });
+    store.setSection("overview");
+    await store.loadContexts();
+  }
+
+  async openLocalClusterB(): Promise<void> {
+    store.setScope({ context: "local-podman" });
     store.setSection("overview");
     await store.loadContexts();
   }

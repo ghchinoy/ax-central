@@ -30,6 +30,7 @@ import {
   PHASES,
   type Phase,
   comparePhase,
+  isLocalContext,
   phaseColor,
   phaseLabel,
   repoName,
@@ -845,7 +846,7 @@ export class AxMoveTaskModal extends LitElement {
       this.context === s.context && trimmedAtes === this.task.atespace;
     const noDebug = detail !== undefined && !detail.debug;
     const unpinnedToCluster =
-      this.context !== "local" &&
+      !isLocalContext(this.context) &&
       Boolean(detail?.image && !detail.image.includes("@sha256:"));
     const canStart = !busy && !this.done && !atesErr && !samePlace && !noDebug;
 
@@ -903,8 +904,10 @@ export class AxMoveTaskModal extends LitElement {
                     >
                       ${
                         c.name === "local"
-                          ? "local (Apple container)"
-                          : shortName(c.name)
+                          ? "local (Apple container · :8090)"
+                          : c.name === "local-podman"
+                            ? "local-podman (Podman Cluster B · :8091)"
+                            : shortName(c.name)
                       }
                     </option>
                   `,
@@ -1520,7 +1523,7 @@ export class AxOverview extends LitElement {
   override render() {
     const s = store.state;
     const ctx = store.currentContext;
-    const subtitle = `${ctx ? (ctx.name === "local" ? "local control plane" : shortName(ctx.name)) : "…"} · atespace ${s.atespace}`;
+    const subtitle = `${ctx ? (ctx.name === "local" ? "local control plane (:8090)" : ctx.name === "local-podman" ? "local Podman Cluster B (:8091)" : shortName(ctx.name)) : "…"} · atespace ${s.atespace}`;
     const tasks = this.sortedTasks();
     const resumable = s.tasks.filter(
       (t) =>

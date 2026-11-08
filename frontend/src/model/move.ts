@@ -20,6 +20,7 @@ import {
   type AXTask,
   type Phase,
   errorSummary,
+  isLocalContext,
   isSafeResourceName,
   toPhase,
 } from "./resources";
@@ -99,7 +100,7 @@ export function portable(text: string, to: MoveTarget): string {
   }
   if (
     doc.kind === "Task" &&
-    to.context !== "local" &&
+    !isLocalContext(to.context) &&
     (to.clearUnpinnedImage ?? true) &&
     typeof doc.spec?.image === "string" &&
     !doc.spec.image.includes("@sha256:")

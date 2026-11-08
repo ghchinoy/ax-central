@@ -24,6 +24,7 @@ import {
   type TaskDetail,
   comparePhase,
   errorSummary,
+  isLocalContext,
   isSafeResourceName,
   parseContexts,
   parseModels,
@@ -62,6 +63,7 @@ export interface Settings {
   repoPath: string;
   experimentsPath: string;
   localServer: string;
+  localServerB: string;
   refreshInterval: number;
 }
 
@@ -112,6 +114,7 @@ function loadSettings(): Settings {
     repoPath: "~/projects/ax",
     experimentsPath: "~/projects/ax-experiments",
     localServer: "localhost:8090",
+    localServerB: "localhost:8091",
     refreshInterval: 4,
   };
   try {
@@ -280,11 +283,15 @@ export class Store extends EventTarget {
     const candidateLocalAx = `${repoExpanded}/.ax-local/bin/ax`;
     const candidateTmpAx = `${repoExpanded}/.tmp/bin/ax`;
     const candidateRepoBinAx = `${repoExpanded}/bin/ax`;
-    const [hasLocalAx, hasTmpAx, hasRepoBinAx] = await Promise.all([
-      window.studio.fileExists(candidateLocalAx),
-      window.studio.fileExists(candidateTmpAx),
-      window.studio.fileExists(candidateRepoBinAx),
-    ]);
+    const candidateClusterBConfig = `${repoExpanded}/.ax-local/ate-local-b.yaml`;
+    const [hasLocalAx, hasTmpAx, hasRepoBinAx, hasClusterBConfig, podmanBin] =
+      await Promise.all([
+        window.studio.fileExists(candidateLocalAx),
+        window.studio.fileExists(candidateTmpAx),
+        window.studio.fileExists(candidateRepoBinAx),
+        window.studio.fileExists(candidateClusterBConfig),
+        window.studio.which("podman"),
+      ]);
     const repoAxBin = hasTmpAx
       ? candidateTmpAx
       : hasRepoBinAx
@@ -327,13 +334,34 @@ export class Store extends EventTarget {
     if (!contexts.some((c) => c.name === "local")) {
       const localCtx: AXContext = {
         name: "local",
-        description: `Local Apple container (ate-local · ${this.state.settings.localServer})`,
+        description: `Local Apple container (Cluster A · ${this.state.settings.localServer})`,
         isCurrent: contexts.length === 0 && info.os === "darwin",
       };
       contexts =
         info.os === "darwin"
           ? [localCtx, ...contexts]
           : [...contexts, localCtx];
+    }
+    if (
+      (hasClusterBConfig || hasLocalAx || !!podmanBin) &&
+      !contexts.some((c) => c.name === "local-podman")
+    ) {
+      const serverB = this.state.settings.localServerB || "localhost:8091";
+      const clusterBCtx: AXContext = {
+        name: "local-podman",
+        description: `Local Podman container (Cluster B · ${serverB})`,
+        isCurrent: false,
+      };
+      const localIdx = contexts.findIndex((c) => c.name === "local");
+      if (localIdx >= 0) {
+        contexts = [
+          ...contexts.slice(0, localIdx + 1),
+          clusterBCtx,
+          ...contexts.slice(localIdx + 1),
+        ];
+      } else {
+        contexts = [...contexts, clusterBCtx];
+      }
     }
     const asked = new URLSearchParams(location.search).get("context");
     const saved = localStorage.getItem(CONTEXT_KEY);
@@ -343,7 +371,7 @@ export class Store extends EventTarget {
     const defaultCtx =
       contexts.find((c) => c.isCurrent)?.name ||
       (info.os !== "darwin"
-        ? contexts.find((c) => c.name !== "local")?.name
+        ? contexts.find((c) => !isLocalContext(c.name))?.name
         : undefined) ||
       "local";
     this.set({
@@ -354,7 +382,7 @@ export class Store extends EventTarget {
 
   axPathFor(context: string): string {
     if (this.state.settings.axPath === "ax") {
-      if (context === "local" && this.state.localAxBin) {
+      if (isLocalContext(context) && this.state.localAxBin) {
         return this.state.localAxBin;
       }
       if (this.state.repoAxBin) {
@@ -372,6 +400,8 @@ export class Store extends EventTarget {
     const a: string[] = [];
     if (context === "local") {
       a.push("--server", this.state.settings.localServer || "localhost:8090");
+    } else if (context === "local-podman" || context === "local-b") {
+      a.push("--server", this.state.settings.localServerB || "localhost:8091");
     } else if (context && isSafeResourceName(context)) {
       a.push("--context", context);
     }
@@ -388,6 +418,11 @@ export class Store extends EventTarget {
   envFor(context: string): Record<string, string> | undefined {
     if (context === "local") {
       return { AX_SERVER: this.state.settings.localServer || "localhost:8090" };
+    }
+    if (context === "local-podman" || context === "local-b") {
+      return {
+        AX_SERVER: this.state.settings.localServerB || "localhost:8091",
+      };
     }
     const kc = this.state.kindKubeconfigs[context];
     if (kc) {

@@ -455,6 +455,226 @@ export class AxClusters extends LitElement {
     `;
   }
 
+  private renderAteLocalClusterBCard(): TemplateResult | typeof nothing {
+    const c = clusters.state;
+    const al = c.ateLocal;
+    if (!al.podmanAvailable && !al.ateLocalB && !al.axServerB) {
+      return nothing;
+    }
+    const s = store.state;
+    const busy = c.op?.status === "running";
+    const mine = busy && c.op?.cluster === "ate-local-b";
+    const current = s.context === "local-podman" || s.context === "local-b";
+    const isSel = this.selected === "ate-local-b";
+    const serverB = s.settings.localServerB || "localhost:8091";
+
+    const axHealth: Health = al.axServerB
+      ? "ok"
+      : al.ateLocalB
+        ? "warn"
+        : "none";
+    const subHealth: Health = al.ateLocalB
+      ? "ok"
+      : al.axServerB
+        ? "warn"
+        : "none";
+    const podHealth: Health = !al.podmanAvailable
+      ? "none"
+      : al.postgres && (al.ateLocalB || al.axServerB)
+        ? "ok"
+        : "none";
+
+    const rows: {
+      id: string;
+      iconName: IconName;
+      title: string;
+      detail: string;
+      health: Health;
+    }[] = [
+      {
+        id: "ax-b",
+        iconName: "server",
+        title: "AX Control Plane B",
+        health: axHealth,
+        detail: al.axServerB
+          ? `ax-server-b listening on ${serverB}`
+          : "Stopped (port 8091)",
+      },
+      {
+        id: "substrate-b",
+        iconName: "layers",
+        title: "ate-local-b Substrate",
+        health: subHealth,
+        detail: al.ateLocalB
+          ? `ControlServer :50052 · ${al.podmanActors.length} Podman container${al.podmanActors.length === 1 ? "" : "s"}`
+          : "Stopped (port 50052)",
+      },
+      {
+        id: "podman",
+        iconName: "box",
+        title: "Podman & Shared Snapshots",
+        health: podHealth,
+        detail: !al.podmanAvailable
+          ? "Podman CLI not found"
+          : al.postgres
+            ? "ax_cluster_b (:5432) · shares .ax-local/snapshots with Cluster A"
+            : "Podman ready · PostgreSQL stopped",
+      },
+    ];
+
+    const anyUp = al.axServerB || al.ateLocalB;
+    const allUp = al.axServerB && al.ateLocalB && al.postgres;
+    const canRunScript =
+      al.available && al.scriptFound && c.tools.go && c.tools.bash;
+    const commands = [
+      {
+        note: "Start dual-cluster stack (Cluster A Apple :8090 + Cluster B Podman :8091)",
+        cmd: `${s.settings.repoPath}/examples/ate_local/local-stack.sh multi-up`,
+      },
+      {
+        note: "Migrate a task from Cluster A (:8090) to Cluster B (:8091)",
+        cmd: `${s.settings.repoPath}/examples/ate_local/local-stack.sh migrate local-task`,
+      },
+    ];
+
+    return html`
+      <div
+        class="card cluster-card ${mine ? "busy" : ""} ${
+          current || isSel ? "highlight" : ""
+        }"
+      >
+        <div class="row cluster-head">
+          <div class="cluster-icon">${icon("box", 16)}</div>
+          <div class="cluster-name">
+            <div class="cluster-title">Podman Cluster B (ate-local-b)</div>
+            <div class="faint mono cluster-ctx">
+              <bdi dir="ltr">local-podman · ${serverB}</bdi>${
+                current ? " · in use" : ""
+              }
+            </div>
+          </div>
+          <div class="spacer"></div>
+          ${this.renderOverall(rows)}
+          <button
+            class="btn term-btn ${isSel ? "active" : ""}"
+            title=${
+              isSel
+                ? "Hide terminal commands"
+                : "Use Dual-Cluster stack from a terminal"
+            }
+            @click=${() => (this.selected = isSel ? null : "ate-local-b")}
+          >
+            ${icon("square-terminal", 14)} Terminal
+          </button>
+        </div>
+
+        <div class="layer-stack">
+          ${rows.map((r) => {
+            const h = HEALTH[r.health];
+            return html`
+              <div class="layer ${r.health}" style="--c:${h.color}">
+                ${icon(r.iconName, 14, { className: "layer-icon" })}
+                <div class="layer-text">
+                  <div class="layer-title">${r.title}</div>
+                  <div class="layer-detail">${r.detail}</div>
+                </div>
+                ${icon(h.iconName, 14, { color: h.color })}
+              </div>
+            `;
+          })}
+        </div>
+
+        ${
+          isSel
+            ? html`
+                <div class="connect">
+                  ${commands.map(
+                    (x) => html`
+                      <div class="connect-item">
+                        <div class="connect-note">${x.note}</div>
+                        <div class="row connect-cmd">
+                          <code class="selectable"
+                            ><bdi dir="ltr">${x.cmd}</bdi></code
+                          >
+                          <button
+                            class="btn small icon ghost"
+                            title="Copy"
+                            aria-label="Copy command"
+                            @click=${() => {
+                              void navigator.clipboard.writeText(x.cmd);
+                              this.copiedCmd = x.cmd;
+                              setTimeout(() => {
+                                if (this.copiedCmd === x.cmd)
+                                  this.copiedCmd = "";
+                              }, 1200);
+                            }}
+                          >
+                            ${icon(
+                              this.copiedCmd === x.cmd ? "check" : "copy",
+                              12,
+                              {
+                                color:
+                                  this.copiedCmd === x.cmd
+                                    ? "var(--green)"
+                                    : undefined,
+                              },
+                            )}
+                          </button>
+                        </div>
+                      </div>
+                    `,
+                  )}
+                </div>
+              `
+            : nothing
+        }
+
+        <div class="row cluster-actions">
+          ${
+            allUp
+              ? html`
+                  <button
+                    class="btn small primary"
+                    ?disabled=${busy}
+                    title="Switch AX Central to Podman Cluster B (local-podman · :8091)"
+                    @click=${() => void clusters.openLocalClusterB()}
+                  >
+                    ${icon("external-link", 12)}
+                    ${current ? "Open Activity" : "Open in Central"}
+                  </button>
+                `
+              : nothing
+          }
+          <button
+            class="btn small ${!allUp ? "primary" : ""}"
+            ?disabled=${busy || !canRunScript}
+            title="Start Dual-Cluster stack (Cluster A Apple :8090 + Cluster B Podman :8091)"
+            @click=${() => void clusters.localStackMultiUp()}
+          >
+            ${icon(anyUp ? "refresh" : "play", 12)}
+            ${anyUp ? "Restart Dual Stack" : "Start Dual Stack"}
+          </button>
+          ${
+            anyUp
+              ? html`
+                  <div class="spacer"></div>
+                  <button
+                    class="btn small ghost danger"
+                    ?disabled=${busy || !canRunScript}
+                    title="Stop Cluster B (ate-local-b :50052 and ax-server-b :8091)"
+                    @click=${() => void clusters.localStackMultiDown()}
+                  >
+                    ${icon("square", 12)} Stop
+                  </button>
+                `
+              : nothing
+          }
+        </div>
+        ${mine ? html`<div class="step-progress"></div>` : nothing}
+      </div>
+    `;
+  }
+
   private renderClusterCard(cl: Cluster): TemplateResult {
     const c = clusters.state;
     const s = store.state;
@@ -911,7 +1131,7 @@ export class AxClusters extends LitElement {
 
           <div class="clusters-layout">
             <div class="cluster-grid">
-              ${this.renderAteLocalCard()}
+              ${this.renderAteLocalCard()} ${this.renderAteLocalClusterBCard()}
               ${c.clusters.map((cl) => this.renderClusterCard(cl))}
             </div>
             <div class="col" style="gap:14px">

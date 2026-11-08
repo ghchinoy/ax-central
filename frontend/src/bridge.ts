@@ -269,7 +269,7 @@ export function createFallbackStudio(
       return {
         status: 0,
         stdout:
-          "postgres=1\natelocal=1\naxserver=1\ndaemon=1\nagentimg=1\nactors=ate-default-gemini-a1b2c3|running|192.168.64.81\n",
+          "postgres=1\natelocal=1\naxserver=1\natelocalb=1\naxserverb=1\npodman=1\ndaemon=1\nagentimg=1\nactors=ate-default-gemini-a1b2c3|running|192.168.64.81\npactors=ate-podman-default-shell-task-01|running|127.0.0.1\n",
         stderr: "",
       };
     }

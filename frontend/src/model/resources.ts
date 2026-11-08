@@ -134,7 +134,10 @@ export interface AXContext {
   isCurrent: boolean;
 }
 
-export const isLocal = (c?: AXContext) => c?.name === "local";
+export const isLocalContext = (ctx?: string) =>
+  ctx === "local" || ctx === "local-podman" || ctx === "local-b";
+
+export const isLocal = (c?: AXContext) => isLocalContext(c?.name);
 
 /** GKE context names are long; show the cluster part. */
 export function shortName(name: string): string {

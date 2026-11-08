@@ -200,7 +200,7 @@ export class AxTerminalSession extends LitElement {
 
   private copyCommand(): void {
     const argv = [
-      store.effectiveAxPath,
+      store.axPathFor(this.tab.context),
       ...this.tab.scope,
       "ssh",
       this.tab.task.name,
@@ -217,12 +217,15 @@ export class AxTerminalSession extends LitElement {
     void window.studio.run({
       program: "/Applications/Ghostty.app/Contents/MacOS/ghostty",
       args: [
+        "--window-save-state=never",
+        "--quit-after-last-window-closed=true",
         "-e",
-        store.effectiveAxPath,
+        store.axPathFor(this.tab.context),
         ...this.tab.scope,
         "ssh",
         this.tab.task.name,
       ],
+      env: store.envFor(this.tab.context),
     });
   }
 
@@ -339,7 +342,7 @@ export class AxTerminalSession extends LitElement {
 
     void window.studio.startSession({
       id: sid,
-      program: store.effectiveAxPath,
+      program: store.axPathFor(this.tab.context),
       args: [
         ...this.tab.scope,
         "ssh",
@@ -352,7 +355,7 @@ export class AxTerminalSession extends LitElement {
         String(rows),
         String(cols),
       ],
-      env: store.envForContext,
+      env: store.envFor(this.tab.context),
     });
 
     this.cleanupSession = () => {

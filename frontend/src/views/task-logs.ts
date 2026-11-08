@@ -25,7 +25,7 @@ import {
 import { customElement, property, query, state } from "lit/decorators.js";
 import { ensureStudioBridge } from "../bridge";
 import { icon } from "../icons";
-import type { AXTask } from "../model/resources";
+import { isLocalContext, type AXTask } from "../model/resources";
 import { store } from "../model/store";
 import { sharedStyles } from "../shared-styles";
 
@@ -245,7 +245,7 @@ export class AxTaskLogs extends LitElement {
     this.loadedTraceSpans = localSpans;
 
     const ctx = store.state.context;
-    if (!ctx || ctx === "local") return;
+    if (!ctx || isLocalContext(ctx)) return;
 
     this.loadingTrace = true;
     try {
@@ -305,7 +305,8 @@ export class AxTaskLogs extends LitElement {
   private syncStream(force = false): void {
     if (!this.task) return;
     const ctx = store.state.context;
-    const isLocal = ctx === "local";
+    const isLocal = isLocalContext(ctx);
+    const isPodmanCtx = ctx === "local-podman" || ctx === "local-b";
     const taskID = `${ctx}:${this.task.atespace}/${this.task.name}`;
     const key = `${taskID}:${this.task.actor ?? ""}:${this.task.phase}`;
     if (!force && key === this.lastKey) return;
@@ -586,14 +587,28 @@ export class AxTaskLogs extends LitElement {
 
     if (isLocal) {
       const ates = sanitizeContainerPart(t.atespace);
-      const c1 = shq(`ate-${ates}-${sanitizeContainerPart(t.actor || t.name)}`);
-      const c2 = shq(`ate-${ates}-${sanitizeContainerPart(t.name)}`);
-      const c3 = shq(`ax.${t.atespace}.${t.name}`);
+      const rawActor = sanitizeContainerPart(t.actor || t.name);
+      const rawName = sanitizeContainerPart(t.name);
+      const c1 = shq(`ate-${ates}-${rawActor}`);
+      const c2 = shq(`ate-apple-${ates}-${rawActor}`);
+      const c3 = shq(`ate-podman-${ates}-${rawActor}`);
+      const c4 = shq(`ate-cluster-b-${ates}-${rawActor}`);
+      const c5 = shq(`ate-b-${ates}-${rawActor}`);
+      const c6 = shq(`ate-${ates}-${rawName}`);
+      const c7 = shq(`ate-apple-${ates}-${rawName}`);
+      const c8 = shq(`ate-podman-${ates}-${rawName}`);
+      const c9 = shq(`ax.${t.atespace}.${t.name}`);
+      const subPat = shq(`-${ates}-${rawName.slice(0, 20)}`);
       const followFlag =
         t.phase === "running" || t.phase === "pending" ? "-f " : "";
+      const appleCheck = `for c in ${c1} ${c2} ${c6} ${c7} ${c4} ${c5} ${c9}; do if container inspect "$c" >/dev/null 2>&1; then found="$c"; rt="container"; break; fi; done; if [ -z "$found" ] && command -v container >/dev/null 2>&1; then found=$(container list --all 2>/dev/null | awk -v p=${subPat} 'NR>1 && index($1, p)>0 {print $1; exit}'); [ -n "$found" ] && rt="container"; fi`;
+      const podmanCheck = `for c in ${c3} ${c8} ${c5} ${c1} ${c6}; do if command -v podman >/dev/null 2>&1 && podman inspect "$c" >/dev/null 2>&1; then found="$c"; rt="podman"; break; fi; done; if [ -z "$found" ] && command -v podman >/dev/null 2>&1; then found=$(podman ps -a --format '{{.Names}}' 2>/dev/null | awk -v p=${subPat} 'index($1, p)>0 {print $1; exit}'); [ -n "$found" ] && rt="podman"; fi`;
+      const searchOrder = isPodmanCtx
+        ? `found=""; rt=""; ${podmanCheck}; if [ -z "$found" ]; then ${appleCheck}; fi`
+        : `found=""; rt=""; ${appleCheck}; if [ -z "$found" ]; then ${podmanCheck}; fi`;
       void window.studio.stream({
         id,
-        commandLine: `if container inspect ${c1} >/dev/null 2>&1; then container logs ${followFlag}${c1} 2>&1; elif container inspect ${c2} >/dev/null 2>&1; then container logs ${followFlag}${c2} 2>&1; elif container inspect ${c3} >/dev/null 2>&1; then container logs ${followFlag}${c3} 2>&1; else printf 'Container %s is not running yet (phase: %s). Resume the task to stream guest logs.\\n' ${c1} ${shq(t.phase)}; fi`,
+        commandLine: `${searchOrder}; if [ "$rt" = "podman" ]; then podman logs ${followFlag}"$found" 2>&1; elif [ -n "$found" ]; then container logs ${followFlag}"$found" 2>&1; else printf 'Container %s is not running yet (phase: %s). Resume the task to stream guest logs.\\n' ${isPodmanCtx ? c3 : c1} ${shq(t.phase)}; fi`,
       });
     } else {
       const kc = `kubectl${ctx === "kube" ? "" : ` --context ${shq(ctx)}`}`;
