@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and [Common Changelog](https://common-changelog.org/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0](https://github.com/ghchinoy/ax-central/compare/v0.4.3...v0.5.0) (2026-11-09)
+
+
+### Features
+
+* **designer,logs,tools:** add Image Registry Catalog & [@sha256](https://github.com/sha256) resolver and Antigravity+dgem HITL safety gate (ax-central-f90) ([93bc480](https://github.com/ghchinoy/ax-central/commit/93bc480e6ee377e48e1604a1540d63c3b42b1de4))
+* **topology,overview:** add Map Session DVR & .jsonl trace replay and .ax-local/snapshots inspector (ax-central-5rr) ([62c4e15](https://github.com/ghchinoy/ax-central/commit/62c4e15e802fb44aed546a7dd9411f1d3b575f69))
+
 ## [0.4.3] - 2026-11-08
 
 ### Added
