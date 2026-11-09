@@ -25,11 +25,41 @@ export type Template =
   | "ate-local"
   | "genkit-apple-container"
   | "swarm-reviewer"
+  | "antigravity-dgem-gate"
   | "antigravity"
   | "gemini"
   | "openai"
   | "claude-managed-agents"
   | "github-actions";
+
+export interface ImageCatalogEntry {
+  name: string;
+  digest?: string;
+  description?: string;
+}
+
+export interface ImageRegistry {
+  id: string;
+  title: string;
+  prefix: string;
+  repoUrl?: string;
+  builtIn?: boolean;
+  images: ImageCatalogEntry[];
+}
+
+export const REGISTRIES_KEY = "ax-central.registries";
+
+export const GHCHINOY_AX_IMAGES = "ghcr.io/ghchinoy/ax-images";
+export const GHCHINOY_IMAGE_DIGESTS = {
+  "agy-agent":
+    "sha256:904b3b71f6bf7559d8562ea5875a0871e643e0a0ae5b844b634d55b518bbdfb1",
+  "dgem-agent":
+    "sha256:a077fb0079b5513aa4f2df37bc41834e7023655281127cae3011f99285f0a586",
+  "genkit-runner":
+    "sha256:591af6440a2b1e2a2959843eb4ec60c956c80f762b8815b10c5c390df99cc57f",
+  "swarm-agent":
+    "sha256:42121723b00ef2dc90d62dcae82c913c10d31d8af3d9a3a7e63bc23f7d4e61b5",
+};
 
 export interface KeyValue {
   id: number;
@@ -114,6 +144,11 @@ export const TEMPLATES: { id: Template; title: string; group?: string }[] = [
     title: "Swarm Code Reviewer (ate-local)",
     group: "ax-experiments",
   },
+  {
+    id: "antigravity-dgem-gate",
+    title: "Antigravity + dgem Safety Gate",
+    group: "ax-experiments",
+  },
   { id: "antigravity", title: "Antigravity Agent", group: "ax-images" },
   { id: "gemini", title: "Gemini Agent", group: "ax-images" },
   { id: "openai", title: "OpenAI Agent", group: "ax-images" },
@@ -171,6 +206,174 @@ const IMAGE_DIGESTS = {
 };
 const image = (name: keyof typeof IMAGE_DIGESTS) =>
   `${AX_IMAGES}/${name}@${IMAGE_DIGESTS[name]}`;
+const ghchinoyImage = (name: keyof typeof GHCHINOY_IMAGE_DIGESTS) =>
+  `${GHCHINOY_AX_IMAGES}/${name}@${GHCHINOY_IMAGE_DIGESTS[name]}`;
+
+export const DEFAULT_REGISTRIES: ImageRegistry[] = [
+  {
+    id: "ghchinoy-ax-images",
+    title: "AX Experiments & DGEM (ghchinoy/ax-images)",
+    prefix: GHCHINOY_AX_IMAGES,
+    repoUrl: "https://github.com/ghchinoy/ax-images",
+    builtIn: true,
+    images: [
+      {
+        name: "agy-agent",
+        digest: GHCHINOY_IMAGE_DIGESTS["agy-agent"],
+        description:
+          "Dual-mode Google Antigravity + optional 4-stage dgem safety gate",
+      },
+      {
+        name: "dgem-agent",
+        digest: GHCHINOY_IMAGE_DIGESTS["dgem-agent"],
+        description: "DiffusionGemma System-1 specialist router & policy gate",
+      },
+      {
+        name: "genkit-runner",
+        digest: GHCHINOY_IMAGE_DIGESTS["genkit-runner"],
+        description: "Declarative Genkit Go v1.14.0 Dotprompt + A2A runner",
+      },
+      {
+        name: "swarm-agent",
+        digest: GHCHINOY_IMAGE_DIGESTS["swarm-agent"],
+        description: "Multi-agent Gemini Python worker",
+      },
+    ],
+  },
+  {
+    id: "rakyll-ax-images",
+    title: "Upstream AX Images (rakyll/ax-images)",
+    prefix: AX_IMAGES,
+    repoUrl: "https://github.com/rakyll/ax-images",
+    builtIn: true,
+    images: [
+      {
+        name: "antigravity",
+        digest: IMAGE_DIGESTS.antigravity,
+        description: "Upstream Antigravity baseline agent",
+      },
+      {
+        name: "gemini",
+        digest: IMAGE_DIGESTS.gemini,
+        description: "Gemini CLI coding agent",
+      },
+      {
+        name: "openai",
+        digest: IMAGE_DIGESTS.openai,
+        description: "OpenAI coding agent",
+      },
+      {
+        name: "claude-managed-agents",
+        digest: IMAGE_DIGESTS["claude-managed-agents"],
+        description: "Anthropic Claude Managed Agents runner",
+      },
+      {
+        name: "github-actions",
+        digest: IMAGE_DIGESTS["github-actions"],
+        description: "Self-hosted GitHub Actions runner",
+      },
+    ],
+  },
+];
+
+export function loadRegistries(): ImageRegistry[] {
+  try {
+    const raw = localStorage.getItem(REGISTRIES_KEY);
+    if (!raw) return DEFAULT_REGISTRIES;
+    const parsed = JSON.parse(raw) as ImageRegistry[];
+    if (!Array.isArray(parsed)) return DEFAULT_REGISTRIES;
+    const byId = new Map<string, ImageRegistry>();
+    for (const def of DEFAULT_REGISTRIES) byId.set(def.id, def);
+    for (const item of parsed) {
+      if (
+        item &&
+        typeof item.id === "string" &&
+        typeof item.prefix === "string"
+      ) {
+        byId.set(item.id, {
+          ...byId.get(item.id),
+          ...item,
+          images: Array.isArray(item.images)
+            ? item.images
+            : (byId.get(item.id)?.images ?? []),
+        });
+      }
+    }
+    return [...byId.values()];
+  } catch {
+    return DEFAULT_REGISTRIES;
+  }
+}
+
+export async function resolveImageDigest(
+  imageRef: string,
+  registries: ImageRegistry[] = loadRegistries(),
+): Promise<{ resolved: string; digest: string | null; error?: string }> {
+  const trimmed = imageRef.trim();
+  if (!trimmed) {
+    return { resolved: "", digest: null, error: "Image reference is empty." };
+  }
+  const atIdx = trimmed.indexOf("@sha256:");
+  if (atIdx > 0) {
+    const dig = trimmed.slice(atIdx + 1);
+    return { resolved: trimmed, digest: dig };
+  }
+  const baseRef = trimmed.replace(/:[^/:@]+$/, "");
+  for (const reg of registries) {
+    for (const img of reg.images) {
+      const candidate = `${reg.prefix}/${img.name}`;
+      if ((baseRef === candidate || trimmed === img.name) && img.digest) {
+        return {
+          resolved: `${candidate}@${img.digest}`,
+          digest: img.digest,
+        };
+      }
+    }
+  }
+
+  ensureStudioBridge();
+  const r = await window.studio.run({
+    program: "/bin/sh",
+    args: [
+      "-c",
+      [
+        'ref="$1"',
+        'base="${ref%%:*}"',
+        "if command -v podman >/dev/null 2>&1; then",
+        '  dig=$(podman manifest inspect "$ref" 2>/dev/null | grep -Eo "sha256:[0-9a-f]{64}" | head -n1 || true)',
+        '  [ -n "$dig" ] && { printf "%s\\n" "$dig"; exit 0; }',
+        "fi",
+        "if command -v container >/dev/null 2>&1; then",
+        '  dig=$(container image inspect "$ref" 2>/dev/null | grep -Eo "sha256:[0-9a-f]{64}" | head -n1 || true)',
+        '  [ -n "$dig" ] && { printf "%s\\n" "$dig"; exit 0; }',
+        "fi",
+        'case "$ref" in',
+        "  ghcr.io/*)",
+        '    path="${base#ghcr.io/}"',
+        '    tag="${ref#${base}}"; tag="${tag#:}"; [ -z "$tag" ] && tag="latest"',
+        '    tok=$(curl -fsSL "https://ghcr.io/token?scope=repository:${path}:pull" 2>/dev/null | sed -n \'s/.*"token":"\\([^"]*\\)".*/\\1/p\')',
+        '    if [ -n "$tok" ]; then',
+        '      dig=$(curl -fsSI -H "Authorization: Bearer $tok" -H "Accept: application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.oci.image.manifest.v1+json" "https://ghcr.io/v2/${path}/manifests/${tag}" 2>/dev/null | awk \'tolower($1)=="docker-content-digest:" {gsub("\\r",""); print $2; exit}\')',
+        '      [ -n "$dig" ] && { printf "%s\\n" "$dig"; exit 0; }',
+        "    fi",
+        "    ;;",
+        "esac",
+        "exit 1",
+      ].join("\n"),
+      "resolve-digest",
+      trimmed,
+    ],
+  });
+  const dig = r.stdout.trim();
+  if (r.status === 0 && /^sha256:[0-9a-f]{64}$/.test(dig)) {
+    return { resolved: `${baseRef}@${dig}`, digest: dig };
+  }
+  return {
+    resolved: trimmed,
+    digest: null,
+    error: `Could not resolve @sha256: digest for "${trimmed}".`,
+  };
+}
 
 const AGENT_PROMPT = `prompt: |
   Read the repository, install it with its test dependencies, and run the
@@ -388,6 +591,62 @@ prompt: |
             name: "origin",
             repo: "https://github.com/google/ax.git",
             branch: "main",
+          },
+        ],
+      };
+    case "antigravity-dgem-gate":
+      return {
+        ...d,
+        name: "agy-dgem-gate",
+        image: ghchinoyImage("agy-agent"),
+        cpu: 2,
+        memoryMi: 4096,
+        debug: true,
+        configMode: "custom",
+        customConfig:
+          AGENT_PROMPT +
+          `maxTurns: 50
+safetyGate: true
+`,
+        env: [
+          { id: uid(), key: "GEMINI_API_KEY", value: "" },
+          {
+            id: uid(),
+            key: "DGEM_GATEWAY_URL",
+            value: "http://192.168.64.1:8095",
+          },
+          { id: uid(), key: "DGEM_GATE_STATIC", value: "1" },
+          { id: uid(), key: "DGEM_GATE_CASCADE", value: "gemini" },
+          {
+            id: uid(),
+            key: "DGEM_GATE_AUDIT_LOG",
+            value: "/workspace/.agy/audit.jsonl",
+          },
+          {
+            id: uid(),
+            key: "DGEM_GATE_HITL_DIR",
+            value: "/workspace/.agy/hitl",
+          },
+        ],
+        workspaceMode: "new",
+        wsName: "cachetools-agy-gated",
+        repos: [
+          {
+            id: uid(),
+            name: "origin",
+            repo: "https://github.com/tkem/cachetools.git",
+            branch: "master",
+          },
+        ],
+        files: [
+          {
+            id: uid(),
+            path: "AGENTS.md",
+            content: `# Working in this repo
+- Pure-Python library. Install with \`pip install -e . pytest\`, test with \`pytest\`.
+- Keep changes small and focused; do not add runtime dependencies.
+- Do not push or open pull requests. Leave changes in the working tree.
+`,
           },
         ],
       };
@@ -748,6 +1007,7 @@ export function tokenizeYAML(text: string): YamlTok[][] {
 
 export class DesignerStore extends EventTarget {
   draft: Draft = template("simple");
+  registries: ImageRegistry[] = loadRegistries();
 
   subscribe = (l: () => void): (() => void) => {
     this.addEventListener("change", l);
@@ -762,6 +1022,49 @@ export class DesignerStore extends EventTarget {
   load(t: Template): void {
     this.draft = template(t);
     this.dispatchEvent(new Event("change"));
+  }
+
+  saveRegistry(reg: ImageRegistry): ImageRegistry[] {
+    const cleanPrefix = reg.prefix.trim().replace(/\/+$/, "");
+    const id =
+      reg.id.trim() ||
+      cleanPrefix.replace(/[^a-zA-Z0-9_-]+/g, "-").toLowerCase();
+    const entry: ImageRegistry = {
+      ...reg,
+      id,
+      prefix: cleanPrefix,
+      title: reg.title.trim() || cleanPrefix,
+      images: reg.images ?? [],
+    };
+    const next = [...this.registries];
+    const idx = next.findIndex((r) => r.id === id || r.prefix === cleanPrefix);
+    if (idx >= 0) next[idx] = { ...next[idx]!, ...entry };
+    else next.push(entry);
+    this.registries = next;
+    localStorage.setItem(REGISTRIES_KEY, JSON.stringify(next));
+    this.dispatchEvent(new Event("change"));
+    return next;
+  }
+
+  removeRegistry(idOrPrefix: string): ImageRegistry[] {
+    const next = this.registries.filter(
+      (r) => r.builtIn || (r.id !== idOrPrefix && r.prefix !== idOrPrefix),
+    );
+    this.registries = next;
+    localStorage.setItem(REGISTRIES_KEY, JSON.stringify(next));
+    this.dispatchEvent(new Event("change"));
+    return next;
+  }
+
+  async resolveDigest(
+    imageRef?: string,
+  ): Promise<{ resolved: string; digest: string | null; error?: string }> {
+    const target = imageRef ?? this.draft.image;
+    const res = await resolveImageDigest(target, this.registries);
+    if (res.digest && !imageRef) {
+      this.set({ image: res.resolved });
+    }
+    return res;
   }
 
   enterRawMode(): void {

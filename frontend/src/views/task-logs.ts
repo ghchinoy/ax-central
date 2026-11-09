@@ -25,7 +25,11 @@ import {
 import { customElement, property, query, state } from "lit/decorators.js";
 import { ensureStudioBridge } from "../bridge";
 import { icon } from "../icons";
-import { isLocalContext, type AXTask } from "../model/resources";
+import {
+  isLocalContext,
+  isSafeResourceName,
+  type AXTask,
+} from "../model/resources";
 import { store } from "../model/store";
 import { sharedStyles } from "../shared-styles";
 
@@ -153,6 +157,11 @@ export class AxTaskLogs extends LitElement {
   @state() private selectedTraceID: string | null = null;
   @state() private loadedTraceSpans: TraceSpan[] = [];
   @state() private loadingTrace = false;
+  @state() private pendingHitl: {
+    id: string;
+    summary: string;
+    status: "pending" | "allowed" | "denied";
+  }[] = [];
   @query(".task-logs") private box?: HTMLElement;
 
   private pinned = true;
@@ -330,6 +339,7 @@ export class AxTaskLogs extends LitElement {
       this.traceLabels = new Map();
       this.selectedTraceID = null;
       this.loadedTraceSpans = [];
+      this.pendingHitl = [];
     }
     this.status = "following";
     this.error = "";
@@ -368,6 +378,29 @@ export class AxTaskLogs extends LitElement {
         effectiveSource = "otel";
         if (text.includes('msg="genkit otel span"')) {
           this.recordGenkitSpan(fields);
+        }
+      }
+      if (
+        text.includes("[AGY-HITL-REQUIRED]") ||
+        fields.subtype?.includes("hitl=pending")
+      ) {
+        const idMatch =
+          /(?:--id|--trace-id|id|req_id)[=\s]+([a-zA-Z0-9._-]+)/.exec(text);
+        const hitlID =
+          idMatch?.[1] || resolvedTraceID || `hitl-${this.nextLineID}`;
+        if (
+          isSafeResourceName(hitlID) &&
+          !this.pendingHitl.some((h) => h.id === hitlID)
+        ) {
+          this.pendingHitl = [
+            ...this.pendingHitl,
+            {
+              id: hitlID,
+              summary:
+                fields.span || text.replace(/^.*\[AGY-HITL-REQUIRED\]\s*/, ""),
+              status: "pending",
+            },
+          ];
         }
       }
 
@@ -831,6 +864,91 @@ export class AxTaskLogs extends LitElement {
     `;
   }
 
+  private async respondHitl(
+    reqID: string,
+    decision: "allow" | "deny",
+  ): Promise<void> {
+    if (!this.task || !isSafeResourceName(reqID)) return;
+    ensureStudioBridge();
+    const ctx = store.state.context;
+    await window.studio.run({
+      program: store.axPathFor(ctx),
+      args: [
+        ...store.scopeFor(ctx, this.task.atespace),
+        "ssh",
+        this.task.name,
+        "--",
+        "sh",
+        "-c",
+        'if [ -x /usr/local/bin/ax-agent ]; then exec /usr/local/bin/ax-agent hitl-respond --hitl-dir /workspace/.agy/hitl --id "$1" --decision "$2" --by "human:ax-central"; else exec python3 /workspace/.agy/dgem_gate_lite.py hitl-respond --trace-id "$1" --decision "$2"; fi',
+        "sh",
+        reqID,
+        decision,
+      ],
+      env: store.envFor(ctx),
+    });
+    this.pendingHitl = this.pendingHitl.map((h) =>
+      h.id === reqID
+        ? { ...h, status: decision === "allow" ? "allowed" : "denied" }
+        : h,
+    );
+    store.log(
+      `HITL ${decision.toUpperCase()} (${this.task.name})`,
+      `Request ${reqID}`,
+      true,
+    );
+  }
+
+  private renderHitlBanner(): TemplateResult | typeof nothing {
+    if (this.pendingHitl.length === 0) return nothing;
+    return html`
+      <div class="hitl-list">
+        ${this.pendingHitl.map(
+          (h) => html`
+            <div class="row hitl-banner ${h.status}">
+              ${icon("alert", 14, {
+                color:
+                  h.status === "allowed"
+                    ? "var(--green)"
+                    : h.status === "denied"
+                      ? "var(--danger)"
+                      : "var(--orange)",
+              })}
+              <div class="col" style="gap:2px;min-width:0;flex:1">
+                <strong style="font-size:11.5px">
+                  dgem Safety Gate HITL · <bdi dir="ltr">${h.id}</bdi>
+                </strong>
+                <span class="caption ellipsis" title=${h.summary}>
+                  <bdi dir="ltr">${h.summary}</bdi>
+                </span>
+              </div>
+              ${
+                h.status === "pending"
+                  ? html`
+                      <button
+                        class="btn small primary"
+                        aria-label="Approve HITL ${h.id}"
+                        @click=${() => void this.respondHitl(h.id, "allow")}
+                      >
+                        ${icon("check", 12)} Approve
+                      </button>
+                      <button
+                        class="btn small danger"
+                        aria-label="Deny HITL ${h.id}"
+                        @click=${() => void this.respondHitl(h.id, "deny")}
+                      >
+                        ${icon("x", 12)} Deny
+                      </button>
+                    `
+                  : html`<span class="caption faint">${h.status}</span>`
+              }
+            </div>
+          `,
+        )}
+      </div>
+    `;
+  }
+
   private renderBody() {
     const visible = this.visibleLines();
     const emptyText =
@@ -877,7 +995,7 @@ export class AxTaskLogs extends LitElement {
             : nothing
         }
       </div>
-      ${this.renderTelemetryBar()}
+      ${this.renderTelemetryBar()} ${this.renderHitlBanner()}
       <div
         class="sandbox-output task-logs selectable"
         @scroll=${(e: Event) => {
@@ -980,6 +1098,23 @@ export class AxTaskLogs extends LitElement {
         gap: 6px;
         flex-wrap: wrap;
         margin-bottom: 6px;
+      }
+      .hitl-list {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        margin-bottom: 6px;
+      }
+      .hitl-banner {
+        padding: 7px 10px;
+        border-radius: var(--radius-s);
+        background: color-mix(
+          in srgb,
+          var(--orange) 12%,
+          var(--surface-bright)
+        );
+        border: 1px solid color-mix(in srgb, var(--orange) 35%, var(--border));
+        gap: 8px;
       }
       .tel-chip {
         padding: 2px 7px;

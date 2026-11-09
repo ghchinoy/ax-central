@@ -120,6 +120,9 @@ export class AxCentral extends LitElement {
   @state() private setExpPath = store.state.settings.experimentsPath;
   @state() private setLocalServer = store.state.settings.localServer;
   @state() private setIntervalVal = store.state.settings.refreshInterval;
+  @state() private newRegTitle = "";
+  @state() private newRegPrefix = "";
+  @state() private newRegImages = "";
   @state() private resolvedAxPath: string | null | undefined = undefined;
 
   readonly host = new ToolHost((signal) => ({
@@ -564,6 +567,109 @@ export class AxCentral extends LitElement {
               >
             </div>
           </div>
+
+          <div
+            style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border)"
+          >
+            <div class="row" style="margin-bottom:8px">
+              <strong style="font-size:12.5px"
+                >Image Artifact Registries</strong
+              >
+              <span class="caption faint"
+                >Used by the Deploy image catalog &amp; @sha256: resolver</span
+              >
+            </div>
+            <div class="col" style="gap:6px;margin-bottom:10px">
+              ${designer.registries.map(
+                (reg) => html`
+                  <div
+                    class="row"
+                    style="padding:6px 10px;border-radius:var(--radius-xs);background:var(--surface-container);font-size:12px"
+                  >
+                    <div class="col" style="gap:2px;min-width:0;flex:1">
+                      <strong class="ellipsis">${reg.title}</strong>
+                      <span class="caption faint mono ellipsis"
+                        ><bdi dir="ltr">${reg.prefix}</bdi> ·
+                        ${
+                          reg.images.map((i) => i.name).join(", ") || "custom"
+                        }</span
+                      >
+                    </div>
+                    ${
+                      reg.builtIn
+                        ? html`<span class="caption faint">built-in</span>`
+                        : html`<button
+                            class="btn small ghost icon danger"
+                            title="Remove registry"
+                            aria-label="Remove registry ${reg.title}"
+                            @click=${() => {
+                              designer.removeRegistry(reg.id);
+                              this.requestUpdate();
+                            }}
+                          >
+                            ${icon("trash", 12)}
+                          </button>`
+                    }
+                  </div>
+                `,
+              )}
+            </div>
+            <div class="row" style="gap:6px">
+              <input
+                class="input mono"
+                style="flex:1.2"
+                placeholder="us-central1-docker.pkg.dev/my-proj/ax"
+                aria-label="New registry prefix"
+                .value=${this.newRegPrefix}
+                @input=${(e: Event) =>
+                  (this.newRegPrefix = (e.target as HTMLInputElement).value)}
+              />
+              <input
+                class="input"
+                style="flex:1"
+                placeholder="Title (optional)"
+                aria-label="New registry title"
+                .value=${this.newRegTitle}
+                @input=${(e: Event) =>
+                  (this.newRegTitle = (e.target as HTMLInputElement).value)}
+              />
+              <input
+                class="input mono"
+                style="flex:1"
+                placeholder="img1,img2"
+                aria-label="New registry image names"
+                .value=${this.newRegImages}
+                @input=${(e: Event) =>
+                  (this.newRegImages = (e.target as HTMLInputElement).value)}
+              />
+              <button
+                class="btn small"
+                ?disabled=${!this.newRegPrefix.trim()}
+                @click=${() => {
+                  const prefix = this.newRegPrefix.trim().replace(/\/+$/, "");
+                  if (!prefix) return;
+                  const imgs = this.newRegImages
+                    .split(",")
+                    .map((s) => s.trim())
+                    .filter(Boolean)
+                    .map((name) => ({ name }));
+                  designer.saveRegistry({
+                    id: prefix.replace(/[^a-zA-Z0-9_-]+/g, "-").toLowerCase(),
+                    title: this.newRegTitle.trim() || prefix,
+                    prefix,
+                    images: imgs,
+                  });
+                  this.newRegPrefix = "";
+                  this.newRegTitle = "";
+                  this.newRegImages = "";
+                  this.requestUpdate();
+                }}
+              >
+                ${icon("plus", 12)} Add
+              </button>
+            </div>
+          </div>
+
           <div class="row" style="margin-top:18px;justify-content:flex-end">
             <button
               class="btn small ghost"

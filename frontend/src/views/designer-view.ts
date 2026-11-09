@@ -71,6 +71,8 @@ export class AxDesigner extends LitElement {
   @state() private envText = "";
   @state() private shownSecrets = new Set<number>();
   @state() private copied = false;
+  @state() private resolvingDigest = false;
+  @state() private digestMessage: string | null = null;
   @query(".split") private splitEl?: HTMLElement;
 
   private offDesigner: (() => void) | null = null;
@@ -737,15 +739,106 @@ export class AxDesigner extends LitElement {
             )}
             ${this.renderField(
               "Image",
-              html`<input
-                class="input mono"
-                aria-label="Image"
-                .value=${d.image}
-                placeholder="server default runner"
-                spellcheck="false"
-                @input=${(e: Event) =>
-                  designer.set({ image: (e.target as HTMLInputElement).value })}
-              />`,
+              html`
+                <div class="col" style="gap:6px">
+                  <div class="row" style="gap:6px">
+                    <select
+                      class="input"
+                      style="flex:1"
+                      aria-label="Select image from registry catalog"
+                      .value=${""}
+                      @change=${(e: Event) => {
+                        const sel = e.target as HTMLSelectElement;
+                        if (sel.value) {
+                          designer.set({ image: sel.value });
+                          this.digestMessage = null;
+                          sel.value = "";
+                        }
+                      }}
+                    >
+                      <option value="">
+                        Pick from image registry catalog…
+                      </option>
+                      ${designer.registries.map(
+                        (reg) => html`
+                          <optgroup label=${reg.title}>
+                            ${reg.images.map((img) => {
+                              const ref = `${reg.prefix}/${img.name}${
+                                img.digest ? `@${img.digest}` : ":latest"
+                              }`;
+                              return html`
+                                <option value=${ref}>
+                                  ${reg.prefix}/${img.name}${
+                                    img.digest
+                                      ? ` (@${img.digest.slice(0, 14)}…)`
+                                      : " (:latest)"
+                                  }
+                                </option>
+                              `;
+                            })}
+                          </optgroup>
+                        `,
+                      )}
+                      <optgroup label="Local Apple Container / Podman">
+                        <option value="ax-agent-local:latest">
+                          ax-agent-local:latest (local agent image)
+                        </option>
+                        <option value="dgem-genkit-task:latest">
+                          dgem-genkit-task:latest (local dgem + genkit)
+                        </option>
+                        <option value="debian:12">
+                          debian:12 (minimal shell)
+                        </option>
+                      </optgroup>
+                    </select>
+                    <button
+                      class="btn small"
+                      ?disabled=${!d.image.trim() || this.resolvingDigest}
+                      title="Resolve and pin the @sha256: manifest digest for this image"
+                      @click=${async () => {
+                        this.resolvingDigest = true;
+                        this.digestMessage = null;
+                        const res = await designer.resolveDigest();
+                        this.resolvingDigest = false;
+                        this.digestMessage = res.error ?? null;
+                      }}
+                    >
+                      ${icon(this.resolvingDigest ? "loader" : "lock", 12, {
+                        className: this.resolvingDigest ? "spin" : "",
+                      })}
+                      Resolve @sha256:
+                    </button>
+                    <button
+                      class="btn small ghost icon"
+                      title="Configure image registries in Settings"
+                      aria-label="Configure image registries"
+                      @click=${() => store.set({ settingsOpen: true })}
+                    >
+                      ${icon("settings", 12)}
+                    </button>
+                  </div>
+                  <input
+                    class="input mono"
+                    aria-label="Image"
+                    .value=${d.image}
+                    placeholder="server default runner"
+                    spellcheck="false"
+                    @input=${(e: Event) => {
+                      this.digestMessage = null;
+                      designer.set({
+                        image: (e.target as HTMLInputElement).value,
+                      });
+                    }}
+                  />
+                  ${
+                    this.digestMessage
+                      ? html`<span class="caption" style="color:var(--orange)"
+                          >${this.digestMessage}</span
+                        >`
+                      : nothing
+                  }
+                </div>
+              `,
               imgErr,
               !d.image.includes("REPLACE_WITH"),
             )}

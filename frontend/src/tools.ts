@@ -99,6 +99,10 @@ export const TOOL_GROUPS: Record<string, string[]> = {
     "load_template",
     "get_draft_manifest",
     "apply_manifest",
+    "list_image_registries",
+    "save_image_registry",
+    "remove_image_registry",
+    "resolve_image_digest",
     "list_clusters",
     "manage_local_stack",
     "check_prerequisites",
@@ -499,7 +503,7 @@ export const TOOLS: ToolDef[] = [
           type: "string",
           enum: TEMPLATES.map((t) => t.id),
           description:
-            "Template ID: blank, simple, ate-local, genkit-apple-container, swarm-reviewer, antigravity, gemini, openai, claude-managed-agents, or github-actions.",
+            "Template ID: blank, simple, ate-local, genkit-apple-container, swarm-reviewer, antigravity-dgem-gate, antigravity, gemini, openai, claude-managed-agents, or github-actions.",
         },
       },
       ["template"],
@@ -574,6 +578,159 @@ export const TOOLS: ToolDef[] = [
         result: {
           applied: true,
           output: r.stdout.trim() || "Created",
+        },
+      };
+    },
+  },
+  {
+    name: "list_image_registries",
+    description:
+      "List all configured container image artifact registries (including built-in ghcr.io/ghchinoy/ax-images and ghcr.io/rakyll/ax-images catalogs and any user-configured registries).",
+    inputSchema: obj({}),
+    readOnly: true,
+    async execute(_args, ctx) {
+      return {
+        result: {
+          count: ctx.designer.registries.length,
+          registries: ctx.designer.registries,
+        },
+      };
+    },
+  },
+  {
+    name: "save_image_registry",
+    description:
+      "Add or update a custom OCI / Artifact Registry repository in the AX Central image catalog.",
+    inputSchema: obj(
+      {
+        prefix: {
+          type: "string",
+          description:
+            'Registry repository prefix (e.g. "us-central1-docker.pkg.dev/my-project/ax-images" or "ghcr.io/org/ax-images").',
+        },
+        title: {
+          type: "string",
+          description: "Human-readable title for the registry.",
+        },
+        images: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              name: { type: "string" },
+              digest: { type: "string" },
+              description: { type: "string" },
+            },
+            required: ["name"],
+          },
+          description: "Optional list of image entries in this registry.",
+        },
+      },
+      ["prefix"],
+    ),
+    async execute(args, ctx) {
+      const prefix = reqStr(args, "prefix").replace(/\/+$/, "");
+      if (!isSafeResourceName(prefix.replace(/[:/]/g, "-"))) {
+        throw new ToolError(`Invalid registry prefix "${prefix}".`);
+      }
+      const title =
+        typeof args.title === "string" && args.title.trim()
+          ? args.title.trim()
+          : prefix;
+      const rawImgs = Array.isArray(args.images) ? args.images : [];
+      const images = rawImgs
+        .filter(
+          (x): x is Record<string, unknown> =>
+            Boolean(x) && typeof x === "object",
+        )
+        .map((x) => ({
+          name: String(x.name ?? "").trim(),
+          ...(typeof x.digest === "string" && x.digest.trim()
+            ? { digest: x.digest.trim() }
+            : {}),
+          ...(typeof x.description === "string" && x.description.trim()
+            ? { description: x.description.trim() }
+            : {}),
+        }))
+        .filter((x) => x.name && isSafeResourceName(x.name));
+      const id = prefix.replace(/[^a-zA-Z0-9_-]+/g, "-").toLowerCase();
+      const registries = ctx.designer.saveRegistry({
+        id,
+        title,
+        prefix,
+        images,
+      });
+      return {
+        result: {
+          saved: id,
+          count: registries.length,
+          registries,
+        },
+      };
+    },
+  },
+  {
+    name: "remove_image_registry",
+    description:
+      "Remove a custom image registry from the AX Central catalog by ID or prefix.",
+    inputSchema: obj(
+      {
+        id: {
+          type: "string",
+          description: "Registry ID or prefix to remove.",
+        },
+      },
+      ["id"],
+    ),
+    async execute(args, ctx) {
+      const id = reqStr(args, "id");
+      const registries = ctx.designer.removeRegistry(id);
+      return {
+        result: {
+          removed: id,
+          count: registries.length,
+          registries,
+        },
+      };
+    },
+  },
+  {
+    name: "resolve_image_digest",
+    description:
+      "Resolve and pin the @sha256: manifest digest for a container image reference (and optionally update the Deploy draft image).",
+    inputSchema: obj({
+      image: {
+        type: "string",
+        description:
+          "Image reference to resolve (defaults to the current Deploy draft image).",
+      },
+      update_draft: {
+        type: "boolean",
+        description:
+          "Whether to update the current Deploy draft image with the resolved @sha256: reference (defaults to true).",
+      },
+    }),
+    async execute(args, ctx) {
+      const imageRef =
+        typeof args.image === "string" && args.image.trim()
+          ? args.image.trim()
+          : ctx.designer.draft.image;
+      const updateDraft = args.update_draft !== false;
+      const res = await ctx.designer.resolveDigest(imageRef);
+      if (!res.digest) {
+        throw new ToolError(
+          res.error || `Could not resolve digest for "${imageRef}".`,
+        );
+      }
+      if (updateDraft) {
+        ctx.designer.set({ image: res.resolved });
+      }
+      return {
+        result: {
+          image: imageRef,
+          resolved: res.resolved,
+          digest: res.digest,
+          updated_draft: updateDraft,
         },
       };
     },

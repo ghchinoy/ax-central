@@ -137,6 +137,20 @@ describe("resources & designer models", () => {
       "https://github.com/tkem/cachetools.git",
     );
 
+    const agyGated = template("antigravity-dgem-gate");
+    expect(agyGated.image).toContain(
+      "ghcr.io/ghchinoy/ax-images/agy-agent@sha256:904b3b71",
+    );
+    const agyGatedYaml = generate(agyGated, true);
+    expect(agyGatedYaml).toContain("safetyGate: true");
+    expect(agyGatedYaml.length).toBeLessThan(16 * 1024);
+    expect(
+      agyGated.env.filter((kv) => /KEY|TOKEN|SECRET|PASSWORD/i.test(kv.key)),
+    ).toHaveLength(1);
+    expect(
+      issues(agyGated).filter((i) => i.text.includes("credential")),
+    ).toHaveLength(1);
+
     const claudeManaged = template("claude-managed-agents");
     const claudeYaml = generate(claudeManaged, true);
     expect(claudeYaml).toContain(
@@ -491,6 +505,56 @@ describe("WebMCP ToolHost & AX tools", () => {
     expect(logsEl.shadowRoot!.querySelector(".waterfall")).not.toBeNull();
     expect(logsEl.shadowRoot!.querySelector(".wf-name")?.textContent).toContain(
       "triage_agent",
+    );
+
+    // Verify inline HITL Approve button in <ax-task-logs> (ax-central-f90.2)
+    const hitlApproveBtn = logsEl.shadowRoot!.querySelector<HTMLButtonElement>(
+      'button[aria-label="Approve HITL req-01"]',
+    )!;
+    expect(hitlApproveBtn).not.toBeNull();
+    hitlApproveBtn.click();
+    await new Promise((r) => setTimeout(r, 30));
+    await (logsEl as unknown as { updateComplete: Promise<boolean> })
+      .updateComplete;
+    expect(
+      logsEl.shadowRoot!.querySelector(".hitl-banner")?.textContent,
+    ).toContain("allowed");
+
+    // Verify Image Registry Catalog & @sha256: Digest Resolver WebMCP tools (ax-central-f90.3)
+    const regList = await el.host.call("list_image_registries", {}, sig);
+    expect(regList.count).toBeGreaterThanOrEqual(2);
+    const savedReg = await el.host.call(
+      "save_image_registry",
+      {
+        prefix: "us-central1-docker.pkg.dev/demo-proj/ax-images",
+        title: "Demo Artifact Registry",
+        images: [
+          {
+            name: "custom-agent",
+            digest:
+              "sha256:1111222233334444555566667777888899990000aaaabbbbccccddddeeeeffff",
+          },
+        ],
+      },
+      sig,
+    );
+    expect(savedReg.count).toBeGreaterThanOrEqual(3);
+    const resolvedDig = await el.host.call(
+      "resolve_image_digest",
+      {
+        image: "ghcr.io/ghchinoy/ax-images/dgem-agent:latest",
+        update_draft: true,
+      },
+      sig,
+    );
+    expect(resolvedDig.digest).toContain("sha256:a077fb0079b5513aa4f2df37");
+    expect(designer.draft.image).toContain(
+      "ghcr.io/ghchinoy/ax-images/dgem-agent@sha256:a077fb0079b5513aa4f2df37",
+    );
+    await el.host.call(
+      "remove_image_registry",
+      { id: "us-central1-docker.pkg.dev/demo-proj/ax-images" },
+      sig,
     );
 
     // Verify Running -> Suspended scale-to-zero transition preserves log lines & deduplicates re-read lines (ax-central-dt0.2)
