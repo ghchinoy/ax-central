@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and [Common Changelog](https://common-changelog.org/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.1] - 2026-11-15
+
+### Added
+- **Full `v1alpha1` Epic #563 Task & Workspace Field Support (`resources.ts`, `designer.ts`, `<ax-designer>`, `<ax-overview>`):** Added visual form inputs and YAML generation for `Task.spec.goal.spec`, `Task.spec.gateway.name` (`#585`), and `Workspace.spec.setup.commands` (`#580`), replaced the deprecated `Worker IP` table column with `Actor` (`actor` / `actorUid`), and surfaced `Actor UID`, `Template`, `Resolved Argv`, `Status Detail`, and `Outcome` (`result`, `exitCode`, `output`) in `<ax-task-inspector>` (`[ax-central-j0f]`).
+
 ## [0.5.0] - 2026-11-15
 
 ### Added
@@ -105,6 +110,7 @@ _Initial release._
 ### Security
 - **WebMCP Argument-Injection & STDIO MCP Guards:** Enforced `reqSafeName` validation across all WebMCP tool inputs to reject leading `-` CLI flags, added `mcp-auditor` warnings for shell wrappers in Workspace STDIO MCP servers, and added `make security` (`npm audit` + Go readability checks) (`[ax-central-hw9]`).
 
+[0.5.1]: https://github.com/ghchinoy/ax-central/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/ghchinoy/ax-central/compare/v0.4.3...v0.5.0
 [0.4.3]: https://github.com/ghchinoy/ax-central/compare/v0.4.2...v0.4.3
 [0.4.2]: https://github.com/ghchinoy/ax-central/compare/v0.4.1...v0.4.2

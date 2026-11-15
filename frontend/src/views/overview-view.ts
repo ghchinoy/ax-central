@@ -69,7 +69,7 @@ const COLUMNS: { key: SortKey; title: string }[] = [
   { key: "state", title: "State" },
   { key: "workspace", title: "Workspace" },
   { key: "image", title: "Image" },
-  { key: "worker", title: "Worker IP" },
+  { key: "worker", title: "Actor" },
   { key: "age", title: "Age" },
 ];
 
@@ -300,22 +300,31 @@ export class AxTaskInspector extends LitElement {
           ["Image", detail?.image],
           [
             "Command",
-            detail?.command.length ? detail.command.join(" ") : undefined,
+            detail?.command.length
+              ? detail.command.join(" ")
+              : detail?.resolvedArgv?.length
+                ? detail.resolvedArgv.join(" ")
+                : undefined,
           ],
+          ["Goal", detail?.goal],
           [
             "Workspace",
             detail?.workspace
               ? `${detail.workspace} → /workspace`
               : "empty /workspace",
           ],
+          ["Gateway", detail?.gateway],
           [
             "Resources",
             detail?.cpu || detail?.memory
               ? `${detail?.cpu ?? "–"} CPU · ${detail?.memory ?? "–"}`
               : undefined,
           ],
-          ["Worker IP", t.workerIP],
           ["Actor", t.actor],
+          ["Actor UID", detail?.actorUid],
+          ["Template", detail?.ateActorTemplate],
+          ["Worker IP", t.workerIP],
+          ["Status Detail", detail?.statusDetail],
           [
             "Debug",
             detail
@@ -423,7 +432,11 @@ export class AxTaskInspector extends LitElement {
                                   class=${
                                     k === "Image" ||
                                     k === "Command" ||
-                                    k === "Worker IP"
+                                    k === "Worker IP" ||
+                                    k === "Actor" ||
+                                    k === "Actor UID" ||
+                                    k === "Template" ||
+                                    k === "Gateway"
                                       ? "mono selectable"
                                       : "selectable"
                                   }
@@ -436,6 +449,43 @@ export class AxTaskInspector extends LitElement {
                       </dl>
                     </section>
 
+                    ${
+                      detail?.outcome
+                        ? html`
+                            <section class="inspector-section">
+                              <h4>Outcome</h4>
+                              <div class="col" style="gap:6px">
+                                <div class="row" style="font-size:12px">
+                                  <strong
+                                    ><bdi dir="ltr"
+                                      >${detail.outcome.result ?? "Completed"}</bdi
+                                    ></strong
+                                  >
+                                  ${
+                                    detail.outcome.exitCode !== undefined
+                                      ? html`<span class="caption faint mono"
+                                          >exit ${detail.outcome.exitCode}</span
+                                        >`
+                                      : nothing
+                                  }
+                                </div>
+                                ${
+                                  detail.outcome.output
+                                    ? html`<div class="manifest selectable">
+                                        <span class="manifest-text"
+                                          >${detail.outcome.output.replace(
+                                            /\r/g,
+                                            "",
+                                          )}</span
+                                        >
+                                      </div>`
+                                    : nothing
+                                }
+                              </div>
+                            </section>
+                          `
+                        : nothing
+                    }
                     ${
                       detail?.conditions.length
                         ? html`
@@ -1392,7 +1442,7 @@ export class AxOverview extends LitElement {
         case "image":
           return d?.image ? shortImage(d.image) : "";
         case "worker":
-          return t.workerIP ?? "";
+          return t.actor ?? d?.actorUid ?? t.workerIP ?? "";
         case "age":
           return -created(t);
       }
@@ -1931,13 +1981,26 @@ export class AxOverview extends LitElement {
                                     : html`<span class="faint">–</span>`
                                 }
                               </td>
-                              <td class="col-worker mono">
+                              <td
+                                class="col-worker mono ellipsis"
+                                title=${
+                                  detail?.actorUid
+                                    ? `${t.actor ?? ""} (${detail.actorUid})`
+                                    : (t.actor ?? t.workerIP ?? "")
+                                }
+                              >
                                 ${
-                                  t.workerIP
-                                    ? html`<bdi dir="ltr"
-                                        >${t.workerIP.split(":")[0]}</bdi
-                                      >`
-                                    : html`<span class="faint">–</span>`
+                                  t.actor
+                                    ? html`<bdi dir="ltr">${t.actor}</bdi>`
+                                    : detail?.actorUid
+                                      ? html`<bdi dir="ltr"
+                                          >${detail.actorUid.slice(0, 8)}</bdi
+                                        >`
+                                      : t.workerIP
+                                        ? html`<bdi dir="ltr"
+                                            >${t.workerIP.split(":")[0]}</bdi
+                                          >`
+                                        : html`<span class="faint">–</span>`
                                 }
                               </td>
                               <td

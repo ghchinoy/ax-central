@@ -97,6 +97,12 @@ export interface Condition {
   updateTime?: string;
 }
 
+export interface TaskOutcome {
+  result?: string;
+  exitCode?: number;
+  output?: string;
+}
+
 /** What `ax get task <name>` adds on top of the list view. */
 export interface TaskDetail {
   workspace?: string;
@@ -109,6 +115,12 @@ export interface TaskDetail {
   debug: boolean;
   createTime?: string;
   actorUid?: string;
+  ateActorTemplate?: string;
+  resolvedArgv?: string[];
+  statusDetail?: string;
+  outcome?: TaskOutcome;
+  goal?: string;
+  gateway?: string;
   conditions: Condition[];
   manifest: string;
 }
@@ -128,6 +140,7 @@ export interface AXWorkspace {
   repos: GitRepo[];
   mcpServers: { name: string; endpoint: string }[];
   files: string[];
+  setupCommands?: string[];
 }
 
 export interface AXModel {
@@ -270,6 +283,23 @@ export function parseTaskYAML(text: string): TaskDetail {
       ? spec.command
       : [];
   const limits = profile.resources?.limits ?? spec.resources?.limits ?? {};
+  const resolvedArgv = Array.isArray(status.resolvedArgv)
+    ? status.resolvedArgv.map(String)
+    : undefined;
+  const sd = status.statusDetail;
+  const statusDetail =
+    sd && (sd.detail || sd.reason)
+      ? [sd.reason, sd.detail].filter(Boolean).join(": ")
+      : undefined;
+  const oc = status.outcome;
+  const outcome: TaskOutcome | undefined =
+    oc && (oc.result || oc.output || oc.exitCode !== undefined)
+      ? {
+          result: oc.result ? String(oc.result) : undefined,
+          exitCode: typeof oc.exitCode === "number" ? oc.exitCode : undefined,
+          output: oc.output ? String(oc.output) : undefined,
+        }
+      : undefined;
   return {
     workspace: spec.workspace?.name,
     image: profile.image ?? spec.image,
@@ -281,6 +311,17 @@ export function parseTaskYAML(text: string): TaskDetail {
     debug: !!spec.debug,
     createTime: doc.metadata?.createTime,
     actorUid: status.actorUid,
+    ateActorTemplate: status.ateActorTemplate || profile.ateActorTemplate,
+    resolvedArgv,
+    statusDetail,
+    outcome,
+    goal:
+      typeof spec.goal?.spec === "string"
+        ? spec.goal.spec
+        : typeof spec.goal === "string"
+          ? spec.goal
+          : undefined,
+    gateway: spec.gateway?.name,
     conditions: Array.isArray(status.conditions)
       ? status.conditions.map((c: any) => ({
           type: String(c.type ?? ""),
@@ -297,6 +338,9 @@ export function parseTaskYAML(text: string): TaskDetail {
 export function parseWorkspaceYAML(text: string, ws: AXWorkspace): AXWorkspace {
   const spec: any = (parseYAML(text) ?? {}).spec ?? {};
   const setup: any = spec.setup ?? spec;
+  const setupCommands = Array.isArray(setup.commands)
+    ? setup.commands.map(String)
+    : undefined;
   return {
     ...ws,
     repos: (setup.git ?? spec.git ?? []).map((g: any) => ({
@@ -316,6 +360,7 @@ export function parseWorkspaceYAML(text: string, ws: AXWorkspace): AXWorkspace {
     files: (setup.files ?? spec.files ?? []).map((f: any) =>
       String(f.path ?? ""),
     ),
+    ...(setupCommands?.length ? { setupCommands } : {}),
   };
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */

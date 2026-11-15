@@ -109,11 +109,21 @@ describe("resources & designer models", () => {
     });
 
     const detail = parseTaskYAML(
-      "apiVersion: ax.io/v1alpha1\nkind: Task\nspec:\n  profile:\n    image: repo/img@sha256:abcdef1234567\n    resources:\n      limits:\n        cpu: '2'\n  commands: ['sh', '-c', 'echo hi']\n  workspace:\n    name: demo-ws\n  debug: true\nstatus:\n  state: TASK_STATE_WORKING\n  actorUid: uid-123\n",
+      "apiVersion: ax.io/v1alpha1\nkind: Task\nspec:\n  profile:\n    image: repo/img@sha256:abcdef1234567\n    resources:\n      limits:\n        cpu: '2'\n  commands: ['sh', '-c', 'echo hi']\n  goal:\n    spec: 'Fix unit tests'\n  gateway:\n    name: egress-gw\n  workspace:\n    name: demo-ws\n  debug: true\nstatus:\n  state: TASK_STATE_WORKING\n  actorUid: uid-123\n  ateActorTemplate: ax-tmpl-01\n  resolvedArgv: ['sh', '-c', 'echo hi']\n  statusDetail:\n    reason: TASK_STATUS_REASON_PROVISIONING_FAILED\n    detail: image pull failed\n  outcome:\n    result: TASK_RESULT_SUCCEEDED\n    exitCode: 0\n    output: 'all tests passed'\n",
     );
     expect(detail.workspace).toBe("demo-ws");
     expect(detail.command).toEqual(["sh", "-c", "echo hi"]);
+    expect(detail.goal).toBe("Fix unit tests");
+    expect(detail.gateway).toBe("egress-gw");
     expect(detail.actorUid).toBe("uid-123");
+    expect(detail.ateActorTemplate).toBe("ax-tmpl-01");
+    expect(detail.resolvedArgv).toEqual(["sh", "-c", "echo hi"]);
+    expect(detail.statusDetail).toContain("image pull failed");
+    expect(detail.outcome).toEqual({
+      result: "TASK_RESULT_SUCCEEDED",
+      exitCode: 0,
+      output: "all tests passed",
+    });
     expect(detail.debug).toBe(true);
     expect(shortImage(detail.image)).toBe("img@abcdef1");
     expect(validateLabel("valid-name-1")).toBeNull();
@@ -123,10 +133,18 @@ describe("resources & designer models", () => {
   });
 
   it("generates multi-document YAML and validates drafts", () => {
-    const d = template("gemini");
+    const d = {
+      ...template("gemini"),
+      goal: "Verify all cachetools tests",
+      gateway: "github-egress-gw",
+      setupCommands: "pip install -e . pytest",
+    };
     const yaml = generate(d, true);
     expect(yaml).toContain("kind: Workspace");
     expect(yaml).toContain("kind: Task");
+    expect(yaml).toContain('goal:\n    spec: "Verify all cachetools tests"');
+    expect(yaml).toContain('gateway:\n    name: "github-egress-gw"');
+    expect(yaml).toContain('commands:\n      - "pip install -e . pytest"');
     expect(canApply(d)).toBe(true);
     expect(issues(d).some((i) => i.severity === "warning")).toBe(true);
     expect(tokenize("sh -c 'echo hello'")).toEqual(["sh", "-c", "echo hello"]);
@@ -448,7 +466,7 @@ describe("WebMCP ToolHost & AX tools", () => {
     await (designerEl as unknown as { updateComplete: Promise<boolean> })
       .updateComplete;
     expect(designerEl.shadowRoot!.textContent).toContain(
-      "Overrides the container entrypoint (spec.command argv).",
+      "Overrides the container entrypoint (spec.commands argv).",
     );
 
     const createBtn = [

@@ -670,6 +670,24 @@ export class AxDesigner extends LitElement {
           </div>
         `,
       )}
+      ${this.renderField(
+        "Setup commands",
+        html`<textarea
+          class="textarea mono"
+          rows="2"
+          aria-label="Workspace setup commands"
+          placeholder="npm ci --prefer-offline"
+          spellcheck="false"
+          .value=${d.setupCommands ?? ""}
+          @input=${(e: Event) =>
+            designer.set({
+              setupCommands: (e.target as HTMLTextAreaElement).value,
+            })}
+        ></textarea>`,
+        null,
+        false,
+        "Deterministic commands executed once during Workspace setup (one per line, emitted under spec.setup.commands).",
+      )}
     `;
   }
 
@@ -857,7 +875,34 @@ export class AxDesigner extends LitElement {
               />`,
               null,
               false,
-              "Overrides the container entrypoint (spec.command argv). Leave blank to let the runner image use its default entrypoint.",
+              "Overrides the container entrypoint (spec.commands argv). Leave blank to let the runner image use its default entrypoint.",
+            )}
+            ${this.renderField(
+              "Goal",
+              html`<input
+                class="input"
+                aria-label="Goal"
+                .value=${d.goal ?? ""}
+                placeholder="Optional natural-language objective (spec.goal.spec)"
+                @input=${(e: Event) =>
+                  designer.set({
+                    goal: (e.target as HTMLInputElement).value,
+                  })}
+              />`,
+            )}
+            ${this.renderField(
+              "Gateway",
+              html`<input
+                class="input mono"
+                aria-label="Gateway"
+                .value=${d.gateway ?? ""}
+                placeholder="Optional egress gateway name (spec.gateway.name)"
+                spellcheck="false"
+                @input=${(e: Event) =>
+                  designer.set({
+                    gateway: (e.target as HTMLInputElement).value,
+                  })}
+              />`,
             )}
           `,
         )}

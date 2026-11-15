@@ -90,6 +90,8 @@ export interface Draft {
   atespace: string;
   image: string;
   command: string;
+  goal?: string;
+  gateway?: string;
   env: KeyValue[];
   cpu: number;
   memoryMi: number;
@@ -103,6 +105,7 @@ export interface Draft {
   files: FileDraft[];
   servers: ServerDraft[];
   skillsPath?: string;
+  setupCommands?: string;
   includeModel: boolean;
   modelName: string;
   provider: string;
@@ -880,8 +883,15 @@ export function generate(d: Draft, redact = false): string {
   if (d.workspaceMode === "new") {
     let y = `apiVersion: ax.io/v1alpha1\nkind: Workspace\nmetadata:\n  name: ${q(d.wsName)}${ates}\nspec:`;
     let empty = true;
+    const setupCmdLines = (d.setupCommands ?? "")
+      .split("\n")
+      .map((l) => l.trim())
+      .filter(Boolean);
     const hasSetup =
-      d.repos.length > 0 || d.files.length > 0 || Boolean(d.skillsPath);
+      d.repos.length > 0 ||
+      d.files.length > 0 ||
+      Boolean(d.skillsPath) ||
+      setupCmdLines.length > 0;
     if (hasSetup) {
       empty = false;
       y += "\n  setup:";
@@ -899,6 +909,12 @@ export function generate(d: Draft, redact = false): string {
       }
       if (d.skillsPath) {
         y += `\n    skills:\n      path: ${q(d.skillsPath)}`;
+      }
+      if (setupCmdLines.length) {
+        y += "\n    commands:";
+        for (const cmd of setupCmdLines) {
+          y += `\n      - ${q(cmd)}`;
+        }
       }
     }
     if (d.servers.length) {
@@ -925,6 +941,12 @@ export function generate(d: Draft, redact = false): string {
   t += `\n    resources:\n      limits:\n        cpu: ${q(cpuString(d.cpu))}\n        memory: ${q(memoryString(d.memoryMi))}`;
   const argv = tokenize(d.command);
   if (argv.length) t += `\n  commands: [${argv.map(q).join(", ")}]`;
+  if (d.goal?.trim()) {
+    t += `\n  goal:\n    spec: ${q(d.goal.trim())}`;
+  }
+  if (d.gateway?.trim()) {
+    t += `\n  gateway:\n    name: ${q(d.gateway.trim())}`;
+  }
   if (d.configMode === "custom") {
     t +=
       "\n  config:\n" +
