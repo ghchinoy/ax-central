@@ -16,7 +16,7 @@ This documentation follows the [Diátaxis](https://diataxis.fr/) structure so yo
 Start here if you are new to AX Central and want a hands-on walkthrough that runs from start to finish on macOS (`ate-local`) or Chromebook / Linux Crostini (`kind-ax-e2e` + `gVisor`):
 
 * **[Run Your First Local Task in AX Central](tutorials/quickstart-local-stack.md)**: Audit prerequisites with `make doctor`, run tasks on either the 3.3-second macOS Apple `container` (`ate-local`) stack or a local Crostini `kind` + Agent Substrate (`gVisor`) cluster, stream multi-layer guest/Substrate/OTel logs and trace waterfalls, migrate `/workspace` across scopes, open an interactive `ax ssh` shell, and invoke tools from the WebMCP Inspector.
-* **[Live 5/5 AX v0.1 Hero Demo Walkthrough](hero-demo.md)**: Execute all 5 steps of the AX v0.1 Hero Demo (`5/5 🟢 PASS`) live across Cluster A (Apple `container` `:8090`) and Cluster B (Podman `:8091`), inspecting warm snapshot tags, A2A multi-turn sessions, stock `python:3.12-slim` runner injection, and cross-cluster promotion inside AX Central.
+* **[Live 5/5 AX v0.1 Hero Demo Walkthrough & Presenter Script](hero-demo.md)**: Prepare a clean dual-cluster slate in ~3 seconds, follow the ~2m 45s spoken presenter cue sheet, and execute all 5 steps of the AX v0.1 Hero Demo (`5/5 🟢 PASS`) live across Cluster A (Apple `container` `:8090`) and Cluster B (Podman `:8091`).
 
 ## 2. How-To Guides (Task-Oriented)
 

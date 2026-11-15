@@ -19,7 +19,7 @@
 # Cluster A -> Cluster B promotion appears live inside AX Central.app.
 #
 # Usage:
-#   bash hack/demo-hero-central.sh [--interactive] [--cleanup] [--step <1-5>]
+#   bash hack/demo-hero-central.sh [--reset] [--reset-only] [--interactive] [--cleanup] [--step <1-5>]
 
 set -euo pipefail
 
@@ -34,6 +34,8 @@ STACK_SCRIPT="${AX_REPO}/examples/ate_local/local-stack.sh"
 
 INTERACTIVE=0
 CLEANUP=0
+RESET=0
+RESET_ONLY=0
 ONLY_STEP=""
 
 while [[ $# -gt 0 ]]; do
@@ -44,6 +46,15 @@ while [[ $# -gt 0 ]]; do
       ;;
     --cleanup)
       CLEANUP=1
+      shift
+      ;;
+    --reset)
+      RESET=1
+      shift
+      ;;
+    --reset-only)
+      RESET=1
+      RESET_ONLY=1
       shift
       ;;
     --step)
@@ -60,6 +71,21 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
+
+if [[ "${RESET}" == "1" ]]; then
+  if [[ ! -x "${STACK_SCRIPT}" ]]; then
+    echo "error: ${STACK_SCRIPT} not found" >&2
+    exit 1
+  fi
+  echo "==> Resetting local AX stack, clearing .ax-local/snapshots/*, and starting dual-cluster multi-up..."
+  bash "${STACK_SCRIPT}" reset
+  rm -rf "${AX_REPO}/.ax-local/snapshots/"*
+  make -C "${AX_REPO}" local-multi-up
+  if [[ "${RESET_ONLY}" == "1" ]]; then
+    echo "==> Fresh slate ready (:8090 Apple container + :8091 Podman). Open AX Central (⌘5) and hit Record!"
+    exit 0
+  fi
+fi
 
 if [[ ! -f "${RUN_LIVE}" ]]; then
   echo "error: ${RUN_LIVE} not found (ensure ~/projects/ax-experiments is up to date)" >&2

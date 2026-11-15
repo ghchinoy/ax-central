@@ -106,7 +106,7 @@ Full documentation lives under [`docs/`](docs/index.md), organized into the four
 
 * **Tutorials (Learning-Oriented)**
   * [Run Your First Local Task in AX Central](docs/tutorials/quickstart-local-stack.md)
-  * [Live 5/5 AX v0.1 Hero Demo Walkthrough](docs/hero-demo.md)
+  * [Live 5/5 AX v0.1 Hero Demo Walkthrough & Presenter Script](docs/hero-demo.md)
 * **How-To Guides (Task-Oriented)**
   * [Manage Runtimes, Prerequisites, and Clusters](docs/how-to/manage-runtimes-and-clusters.md)
   * [Design Tasks and Automate with WebMCP](docs/how-to/design-tasks-and-use-webmcp.md)
