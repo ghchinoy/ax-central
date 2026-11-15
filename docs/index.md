@@ -28,7 +28,7 @@ Step-by-step recipes for specific operational workflows:
 
 Factual tables and schemas for lookup while building or scripting:
 
-* **[CLI, Shortcuts, and WebMCP Tools Reference](reference/cli-and-webmcp-tools.md)**: Complete reference for all 17 WebMCP tools, `Makefile` targets, `hack/doctor.sh --json` output schema, and macOS keyboard shortcuts.
+* **[CLI, Shortcuts, and WebMCP Tools Reference](reference/cli-and-webmcp-tools.md)**: Complete reference for all 21 WebMCP tools, `Makefile` targets, `hack/doctor.sh --json` output schema, and macOS keyboard shortcuts.
 
 ## 4. Explanation (Understanding-Oriented)
 

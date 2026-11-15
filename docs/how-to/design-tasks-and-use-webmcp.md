@@ -23,6 +23,7 @@ Open **Deploy** (`⌘3`) and click **Templates** in the top-right toolbar:
 | `ax-experiments` | **Apple Container Task (ate-local)** | `ate-local` | Native `arm64` `debian:12` task for the local Apple `container` stack (`examples/ate_local/task-local.yaml`). |
 | `ax-experiments` | **Genkit Incident Triage (ate-local)** | `genkit-apple-container` | Declarative Dotprompt `triage_agent` on `ax-agent-local:latest` bound to `demo-workspace` with `README.md`, `retry_test.go`, `.agents/skills/incident-runbook/SKILL.md`, `tools/incident_mcp.py`, and the `telemetry` STDIO MCP server (`python3 /workspace/tools/incident_mcp.py`). |
 | `ax-experiments` | **Swarm Code Reviewer (ate-local)** | `swarm-reviewer` | Security Auditor agent from `~/projects/ax-experiments/swarm/04-review-panel.sh` on `ax-agent-local:latest`. |
+| `ax-experiments` | **Antigravity + dgem Safety Gate** | `antigravity-dgem-gate` | Dual-mode `ghcr.io/ghchinoy/ax-images/agy-agent` (`v0.1.1`) with `safetyGate: true` (`Stage 0 static -> Stage 1 dgem -> Stage 2 Gemini -> Stage 3 ax ssh HITL`). |
 
 ---
 
@@ -30,18 +31,18 @@ Open **Deploy** (`⌘3`) and click **Templates** in the top-right toolbar:
 
 The visual editor on the left side of **Deploy** is divided into six cards that update the **Composition Diagram** and **Generated YAML** in real time:
 
-1. **Task**: Set the RFC 1123 task `Name`, `Atespace`, container `Image`, and `Command` (tokenized into an `argv` array).
+1. **Task**: Set the RFC 1123 task `Name`, `Atespace`, container `Image` (via the **Image Artifact Registry Catalog** picker and 1-click **`Resolve @sha256:`** button, emitted under `spec.profile.image`), and `Command` (emitted under `spec.commands`).
 2. **Environment**:
    * In **Form** mode, add key-value variables. Keys matching `/KEY|TOKEN|SECRET|PASSWORD/i` are masked with a lock icon and redacted (`••••••••`) in the read-only YAML preview while remaining intact when copied or applied.
    * Paste multiple `export KEY=VALUE` lines into any key input, or switch to **`.env`** mode to edit variables as a block.
-3. **Sandbox**: Adjust CPU (`0.25` to `8` cores) and Memory (`256Mi` to `16Gi`) sliders, and keep **Debug** enabled (`spec.debug: true`) so the guest runner exposes port `80` for `ax ssh`.
+3. **Sandbox**: Adjust CPU (`0.25` to `8` cores) and Memory (`256Mi` to `16Gi`) sliders (emitted under `spec.profile.resources.limits`), and keep **Debug** enabled (`spec.debug: true`) so the guest runner exposes port `80` for `ax ssh`.
 4. **Runner config**: Choose **Custom YAML** to populate `spec.config` (for example, a declarative Dotprompt agent definition or structured runner parameters).
 5. **Workspace**:
    * **None**: Mounts an empty `/workspace`.
    * **Existing**: Binds an existing workspace in the current atespace.
-   * **New**: Emits a `kind: Workspace` document alongside the `Task`, including **Git repos**, inline **Files** (such as `AGENTS.md` or `.agents/skills/*/SKILL.md`), and **MCP servers** (HTTP `endpoint` or STDIO `command` + `args`).
+   * **New**: Emits a `kind: Workspace` document alongside the `Task`, including `spec.setup.git` (`ref`), inline `spec.setup.files` (such as `AGENTS.md` or `.agents/skills/*/SKILL.md`), `spec.setup.skills`, and `spec.mcp.servers` (HTTP `endpoint` or STDIO `command` + `args`).
    * *Security check (`mcp-auditor`)*: If a STDIO MCP server uses shell wrappers (`sh -c`, `bash -c`) or shell metacharacters, `designer.ts` surfaces a warning in the footer.
-6. **Model**: Toggle **Include a Model resource** to emit a `kind: Model` document (`provider`, `model`, `apiKeySecretRef`, `maxTokens`) alongside the `Workspace` and `Task`.
+6. **Model**: Toggle **Include a Model resource** to emit a `kind: Model` document (`provider`, `model`, `secretKey`, `parameters.maxTokens`) alongside the `Workspace` and `Task`.
 
 ### Switch Between Visual Form and Raw YAML
 * Toggle **Edit raw** in the YAML header to edit the multi-document YAML manifest directly inside `<textarea class="yaml-raw">` with a synchronized line-number gutter.
@@ -51,7 +52,7 @@ The visual editor on the left side of **Deploy** is divided into six cards that 
 
 ## 3. Automate AX Central via WebMCP (`document.modelContext`)
 
-AX Central registers 17 operational tools with the browser's `document.modelContext` API (when running in a WebMCP-enabled host) and mirrors them in its built-in `ToolHost` registry.
+AX Central registers 21 operational tools with the browser's `document.modelContext` API (when running in a WebMCP-enabled host) and mirrors them in its built-in `ToolHost` registry.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="../screenshots/webmcp-dark.webp">

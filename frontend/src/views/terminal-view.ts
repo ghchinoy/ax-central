@@ -199,6 +199,10 @@ export class AxTerminalSession extends LitElement {
   }
 
   private copyCommand(): void {
+    const env = store.envFor(this.tab.context);
+    const envPrefix = env?.ATENET_ROUTER_ADDR
+      ? `ATENET_ROUTER_ADDR=${shq(env.ATENET_ROUTER_ADDR)} `
+      : "";
     const argv = [
       store.axPathFor(this.tab.context),
       ...this.tab.scope,
@@ -206,7 +210,7 @@ export class AxTerminalSession extends LitElement {
       this.tab.task.name,
     ];
     void navigator.clipboard.writeText(
-      externalCommand(argv.map(shq).join(" ")),
+      externalCommand(envPrefix + argv.map(shq).join(" ")),
     );
     this.copied = true;
     setTimeout(() => (this.copied = false), 1400);

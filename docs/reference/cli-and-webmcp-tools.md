@@ -1,6 +1,6 @@
 # Reference: CLI, Shortcuts, and WebMCP Tools
 
-This reference documents AX Central's `Makefile` targets, `hack/doctor.sh` CLI flags and JSON output schema, keyboard shortcuts, and all 17 WebMCP tools registered in `frontend/src/tools.ts`.
+This reference documents AX Central's `Makefile` targets, `hack/doctor.sh` CLI flags and JSON output schema, keyboard shortcuts, and all 21 WebMCP tools registered in `frontend/src/tools.ts`.
 
 ## 1. `Makefile` Targets
 
@@ -90,7 +90,7 @@ All resource, context, and atespace names passed to WebMCP tools are validated b
 | `select_task` | *(none)* | `{ name: string }` | Selects a task in the UI to open `<ax-task-inspector>` (pass `""` to close). |
 | `suspend_task` | `consequential` | `{ name: string }` | Suspends a running or pending task (`ax suspend task <name>`). |
 | `resume_task` | *(none)* | `{ name: string }` | Resumes a suspended, failed, or completed task (`ax resume task <name>`). |
-| `move_task` | `consequential` | `{ name: string, target_context?: string, target_atespace?: string, delete_original?: boolean }` | Recreates a task and its workspace in `target_context` / `target_atespace` and streams `/workspace` across over `ax ssh` (`tar cf - \| tar xf -`). |
+| `move_task` | `consequential` | `{ name: string, target_context?: string, target_atespace?: string, delete_original?: boolean, overwrite_existing?: boolean }` | Recreates a task and its workspace in `target_context` / `target_atespace` and streams `/workspace` across over `ax ssh` (`tar cf - \| tar xf -`). |
 | `delete_task` | `consequential` | `{ name: string }` | Deletes a task and tears down its sandbox (`ax delete task <name>`). |
 
 ### Group 2: `Workspaces & Scope`
@@ -106,9 +106,13 @@ All resource, context, and atespace names passed to WebMCP tools are validated b
 
 | Tool Name | Flags | Parameters | Description |
 | :--- | :--- | :--- | :--- |
-| `load_template` | *(none)* | `{ template: "blank" \| "simple" \| "antigravity" \| "gemini" \| "openai" \| "claude-managed-agents" \| "github-actions" \| "ate-local" \| "genkit-apple-container" \| "swarm-reviewer" }` | Loads a task template into `<ax-designer>` and switches to the **Deploy** view. |
+| `load_template` | *(none)* | `{ template: "blank" \| "simple" \| "antigravity-dgem-gate" \| "antigravity" \| "gemini" \| "openai" \| "claude-managed-agents" \| "github-actions" \| "ate-local" \| "genkit-apple-container" \| "swarm-reviewer" }` | Loads a task template into `<ax-designer>` and switches to the **Deploy** view. |
 | `get_draft_manifest` | `readOnly` | `{}` | Returns the current YAML manifest in `<ax-designer>` (with secrets redacted), `can_apply`, and validation `issues`. |
 | `apply_manifest` | `consequential` | `{ yaml?: string }` | Applies either the provided `yaml` string or the current `<ax-designer>` draft via `ax apply -f -`. |
-| `list_clusters` | `readOnly` | `{}` | Returns container runtime info, `ate_local` 3-layer stack health and microVM list, and `kind` `clusters`. |
-| `manage_local_stack` | `consequential` | `{ action: "up" \| "down" \| "reset" \| "status" \| "use" }` | Starts, stops, resets, queries, or switches to the local Apple `container` (`ate-local`) stack via `examples/ate_local/local-stack.sh`. |
+| `list_image_registries` | `readOnly` | `{}` | Lists all configured container image artifact registries (`ghcr.io/ghchinoy/ax-images`, `ghcr.io/rakyll/ax-images`, and custom registries). |
+| `save_image_registry` | *(none)* | `{ prefix: string, title?: string, images?: { name: string, digest?: string, description?: string }[] }` | Adds or updates a custom OCI / Artifact Registry repository in the image catalog. |
+| `remove_image_registry` | *(none)* | `{ id: string }` | Removes a custom image registry from the catalog by ID or prefix. |
+| `resolve_image_digest` | *(none)* | `{ image?: string, update_draft?: boolean }` | Resolves and pins the `@sha256:` manifest digest for an image reference. |
+| `list_clusters` | `readOnly` | `{}` | Returns container runtime info, `ate_local` stack health and microVM list, and `kind` `clusters`. |
+| `manage_local_stack` | `consequential` | `{ action: "up" \| "down" \| "reset" \| "status" \| "use" \| "multi-up" \| "multi-down" \| "use-b" }` | Starts, stops, resets, queries, or switches to the local Apple `container` / Podman (`ate-local` / `ate-local-b`) stacks via `examples/ate_local/local-stack.sh`. |
 | `check_prerequisites` | `readOnly` | `{}` | Runs `hack/doctor.sh --json` to audit `go`, `/usr/local/bin/container`, `~/projects/ax` (`feat/ate-local-apple-container`), `.ax-local/bin/*`, `~/projects/ax-experiments`, `ax-agent-local:latest`, and `kind`/`kubectl`/`docker`/`podman`. |

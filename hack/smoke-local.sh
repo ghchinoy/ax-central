@@ -23,6 +23,7 @@ AX_REPO="${AX_REPO/#\~/$HOME}"
 STACK_SCRIPT="${AX_REPO}/examples/ate_local/local-stack.sh"
 AX_BIN="${AX_REPO}/.ax-local/bin/ax"
 SERVER_ADDR="${AX_SERVER:-localhost:8090}"
+export ATENET_ROUTER_ADDR="${ATENET_ROUTER_ADDR:-127.0.0.1:50051}"
 
 if [[ ! -f "$STACK_SCRIPT" ]]; then
   echo "skip: $STACK_SCRIPT not found"
@@ -53,12 +54,13 @@ kind: Task
 metadata:
   name: "${TASK_NAME}"
 spec:
-  image: "debian:12"
-  command: ["sh", "-c", "echo smoke-ready && sleep 120"]
-  resources:
-    limits:
-      cpu: "1"
-      memory: "512Mi"
+  profile:
+    image: "debian:12"
+    resources:
+      limits:
+        cpu: "1"
+        memory: "512Mi"
+  commands: ["sh", "-c", "echo smoke-ready && sleep 120"]
   debug: true
 EOF
 
@@ -81,12 +83,13 @@ metadata:
   name: "${TASK_NAME}"
   atespace: staging
 spec:
-  image: "debian:12"
-  command: ["sh", "-c", "echo smoke-staging-ready && sleep 120"]
-  resources:
-    limits:
-      cpu: "1"
-      memory: "512Mi"
+  profile:
+    image: "debian:12"
+    resources:
+      limits:
+        cpu: "1"
+        memory: "512Mi"
+  commands: ["sh", "-c", "echo smoke-staging-ready && sleep 120"]
   debug: true
 EOF
 "$AX_BIN" --server "$SERVER_ADDR" -a staging resume task "$TASK_NAME" || "$AX_BIN" --server "$SERVER_ADDR" -a staging resume "$TASK_NAME"

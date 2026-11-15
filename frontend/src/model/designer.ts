@@ -880,19 +880,26 @@ export function generate(d: Draft, redact = false): string {
   if (d.workspaceMode === "new") {
     let y = `apiVersion: ax.io/v1alpha1\nkind: Workspace\nmetadata:\n  name: ${q(d.wsName)}${ates}\nspec:`;
     let empty = true;
-    if (d.repos.length) {
+    const hasSetup =
+      d.repos.length > 0 || d.files.length > 0 || Boolean(d.skillsPath);
+    if (hasSetup) {
       empty = false;
-      y += "\n  git:";
-      for (const r of d.repos) {
-        y += `\n    - name: ${q(r.name || "origin")}\n      repo: ${q(r.repo)}`;
-        if (r.branch) y += `\n      branch: ${q(r.branch)}`;
+      y += "\n  setup:";
+      if (d.repos.length) {
+        y += "\n    git:";
+        for (const r of d.repos) {
+          y += `\n      - name: ${q(r.name || "origin")}\n        repo: ${q(r.repo)}`;
+          if (r.branch) y += `\n        ref: ${q(r.branch)}`;
+        }
       }
-    }
-    if (d.files.length) {
-      empty = false;
-      y += "\n  files:";
-      for (const f of d.files)
-        y += `\n    - path: ${q(f.path)}\n      content: ${block(f.content, 8)}`;
+      if (d.files.length) {
+        y += "\n    files:";
+        for (const f of d.files)
+          y += `\n      - path: ${q(f.path)}\n        content: ${block(f.content, 10)}`;
+      }
+      if (d.skillsPath) {
+        y += `\n    skills:\n      path: ${q(d.skillsPath)}`;
+      }
     }
     if (d.servers.length) {
       empty = false;
@@ -909,18 +916,15 @@ export function generate(d: Draft, redact = false): string {
         }
       }
     }
-    if (d.skillsPath) {
-      empty = false;
-      y += `\n  skills:\n    path: ${q(d.skillsPath)}`;
-    }
     if (empty) y += " {}";
     docs.push(y);
   }
 
-  let t = `apiVersion: ax.io/v1alpha1\nkind: Task\nmetadata:\n  name: ${q(d.name)}${ates}\nspec:`;
-  if (d.image) t += `\n  image: ${q(d.image)}`;
+  let t = `apiVersion: ax.io/v1alpha1\nkind: Task\nmetadata:\n  name: ${q(d.name)}${ates}\nspec:\n  profile:`;
+  if (d.image) t += `\n    image: ${q(d.image)}`;
+  t += `\n    resources:\n      limits:\n        cpu: ${q(cpuString(d.cpu))}\n        memory: ${q(memoryString(d.memoryMi))}`;
   const argv = tokenize(d.command);
-  if (argv.length) t += `\n  command: [${argv.map(q).join(", ")}]`;
+  if (argv.length) t += `\n  commands: [${argv.map(q).join(", ")}]`;
   if (d.configMode === "custom") {
     t +=
       "\n  config:\n" +
@@ -938,7 +942,6 @@ export function generate(d: Draft, redact = false): string {
       t += `\n    - name: ${q(kv.key)}\n      value: ${q(v)}`;
     }
   }
-  t += `\n  resources:\n    limits:\n      cpu: ${q(cpuString(d.cpu))}\n      memory: ${q(memoryString(d.memoryMi))}`;
   if (d.workspaceMode === "existing" && d.existingWorkspace)
     t += `\n  workspace:\n    name: ${q(d.existingWorkspace)}`;
   if (d.workspaceMode === "new")

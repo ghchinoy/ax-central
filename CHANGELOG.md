@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and [Common Changelog](https://common-changelog.org/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-11-15
+
+### Added
+- **Map Session DVR & `.jsonl` Swarm Trace Replay (`<ax-topology>`, `store.ts`):** Added a bottom timeline scrubber bar to Map (`⌘2`) that records up to 120 live session topology frames (persisting across container teardown) and replays `~/projects/ax-experiments/viz/traces/*.jsonl` recordings (`[ax-central-5rr.1]`).
+- **Post-Mortem Workspace Snapshot Inspector (`<ax-overview>`, `store.ts`):** Lists persisted `.ax-local/snapshots/<atespace>/*.tar.gz` archives in Activity (`⌘1`) even after task containers are removed, with an archive file browser and text/markdown preview modal (`[ax-central-5rr.2]`).
+- **Configurable Image Artifact Registry Catalog & `@sha256:` Resolver (`designer.ts`, `<ax-designer>`, `app.ts`, `tools.ts`):** Pre-populated `ghcr.io/ghchinoy/ax-images` (`agy-agent`, `dgem-agent`, `genkit-runner`, `swarm-agent` at `v0.1.1`) and `ghcr.io/rakyll/ax-images` (`v0.5.0`), added a catalog picker and 1-click **`Resolve @sha256:`** button in Deploy, added custom registry management in Settings (`⌘,`), and exposed `list_image_registries`, `save_image_registry`, `remove_image_registry`, and `resolve_image_digest` WebMCP tools (`[ax-central-f90.3]`).
+- **Antigravity + `dgem` Safety Gate Template & Inline HITL Approval (`designer.ts`, `<ax-task-logs>`):** Added the `antigravity-dgem-gate` template (`ghcr.io/ghchinoy/ax-images/agy-agent@sha256:904b3b71...` with `safetyGate: true`) and inline **Approve / Deny** buttons in `<ax-task-logs>` for `[AGY-HITL-REQUIRED]` / `hitl=pending` events (`[ax-central-f90.2]`).
+
+### Changed
+- **Upstream `v1alpha1` `Profile` / `Workspace.spec.setup` / `TaskState` & Embedded `atenet-router` Alignment (`resources.ts`, `designer.ts`, `store.ts`, `move.ts`, `hack/smoke-local.sh`):** Updated manifest generation and parsing for `Task.spec.profile.{image,resources}`, `Task.spec.commands`, `Workspace.spec.setup.{git(ref),files,skills}`, `STATE` / `TASK_STATE_WORKING`, and `status.actorUid`, and exported `ATENET_ROUTER_ADDR=127.0.0.1:50051` (`local`) / `127.0.0.1:50052` (`local-podman`) so `ax ssh` routes through `ate-local`'s embedded `atenet-router` (`[ax-central-paw]`, `[ax-central-7b1]`).
+
 ## [0.4.3] - 2026-11-08
 
 ### Added
@@ -94,6 +105,7 @@ _Initial release._
 ### Security
 - **WebMCP Argument-Injection & STDIO MCP Guards:** Enforced `reqSafeName` validation across all WebMCP tool inputs to reject leading `-` CLI flags, added `mcp-auditor` warnings for shell wrappers in Workspace STDIO MCP servers, and added `make security` (`npm audit` + Go readability checks) (`[ax-central-hw9]`).
 
+[0.5.0]: https://github.com/ghchinoy/ax-central/compare/v0.4.3...v0.5.0
 [0.4.3]: https://github.com/ghchinoy/ax-central/compare/v0.4.2...v0.4.3
 [0.4.2]: https://github.com/ghchinoy/ax-central/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/ghchinoy/ax-central/compare/v0.4.0...v0.4.1

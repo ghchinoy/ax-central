@@ -93,7 +93,10 @@ export function portable(text: string, to: MoveTarget): string {
   delete doc.status;
   if (doc.metadata) {
     delete doc.metadata.createTime;
+    delete doc.metadata.updateTime;
+    delete doc.metadata.deleteTime;
     delete doc.metadata.uid;
+    delete doc.metadata.owner;
     delete doc.metadata.resourceVersion;
     delete doc.metadata.generation;
     delete doc.metadata.managedFields;
@@ -102,11 +105,20 @@ export function portable(text: string, to: MoveTarget): string {
   if (
     doc.kind === "Task" &&
     !isLocalContext(to.context) &&
-    (to.clearUnpinnedImage ?? true) &&
-    typeof doc.spec?.image === "string" &&
-    !doc.spec.image.includes("@sha256:")
+    (to.clearUnpinnedImage ?? true)
   ) {
-    delete doc.spec.image;
+    if (
+      typeof doc.spec?.profile?.image === "string" &&
+      !doc.spec.profile.image.includes("@sha256:")
+    ) {
+      delete doc.spec.profile.image;
+    }
+    if (
+      typeof doc.spec?.image === "string" &&
+      !doc.spec.image.includes("@sha256:")
+    ) {
+      delete doc.spec.image;
+    }
   }
   return stringifyYAML(doc);
 }
@@ -118,8 +130,10 @@ async function phaseOf(
   name: string,
 ): Promise<Phase> {
   const raw = await mustAt(context, atespace, ["get", "task", name]);
-  const doc = parseYAML(raw) as { status?: { phase?: string } } | null;
-  return toPhase(doc?.status?.phase);
+  const doc = parseYAML(raw) as {
+    status?: { state?: string; phase?: string };
+  } | null;
+  return toPhase(doc?.status?.state ?? doc?.status?.phase);
 }
 
 async function waitFor(

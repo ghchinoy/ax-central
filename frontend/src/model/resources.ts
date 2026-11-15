@@ -38,9 +38,18 @@ export const PHASES: Phase[] = [
 ];
 
 export function toPhase(raw: string | undefined): Phase {
-  const s = (raw ?? "").toLowerCase();
-  if (s === "" || s === "<none>") return "pending";
-  if (s === "succeeded") return "completed";
+  const s = (raw ?? "").toLowerCase().replace(/^task_state_/, "");
+  if (s === "" || s === "<none>" || s === "unspecified" || s === "queued")
+    return "pending";
+  if (
+    s === "working" ||
+    s === "idle" ||
+    s === "requiresaction" ||
+    s === "requires_action"
+  )
+    return "running";
+  if (s === "suspending") return "suspended";
+  if (s === "succeeded" || s === "cancelled") return "completed";
   return s;
 }
 
@@ -99,6 +108,7 @@ export interface TaskDetail {
   memory?: string;
   debug: boolean;
   createTime?: string;
+  actorUid?: string;
   conditions: Condition[];
   manifest: string;
 }
@@ -174,7 +184,7 @@ export const parseTasks = (text: string): AXTask[] =>
         id: `${atespace}/${r.NAME}`,
         name: r.NAME,
         atespace,
-        phase: toPhase(r.PHASE),
+        phase: toPhase(r.STATE ?? r.PHASE),
         actor: none(r.ACTOR),
         workerIP: none(r["WORKER-IP"]),
         age: r.AGE ?? "",
@@ -253,16 +263,24 @@ export function parseTaskYAML(text: string): TaskDetail {
         .filter(Boolean);
     }
   }
+  const profile = spec.profile ?? {};
+  const rawCmd = Array.isArray(spec.commands)
+    ? spec.commands
+    : Array.isArray(spec.command)
+      ? spec.command
+      : [];
+  const limits = profile.resources?.limits ?? spec.resources?.limits ?? {};
   return {
     workspace: spec.workspace?.name,
-    image: spec.image,
-    command: Array.isArray(spec.command) ? spec.command.map(String) : [],
+    image: profile.image ?? spec.image,
+    command: rawCmd.map(String),
     env,
     ...(targets.length > 0 ? { targets } : {}),
-    cpu: spec.resources?.limits?.cpu,
-    memory: spec.resources?.limits?.memory,
+    cpu: limits.cpu,
+    memory: limits.memory,
     debug: !!spec.debug,
     createTime: doc.metadata?.createTime,
+    actorUid: status.actorUid,
     conditions: Array.isArray(status.conditions)
       ? status.conditions.map((c: any) => ({
           type: String(c.type ?? ""),
@@ -278,12 +296,13 @@ export function parseTaskYAML(text: string): TaskDetail {
 
 export function parseWorkspaceYAML(text: string, ws: AXWorkspace): AXWorkspace {
   const spec: any = (parseYAML(text) ?? {}).spec ?? {};
+  const setup: any = spec.setup ?? spec;
   return {
     ...ws,
-    repos: (spec.git ?? []).map((g: any) => ({
+    repos: (setup.git ?? spec.git ?? []).map((g: any) => ({
       name: String(g.name ?? ""),
       repo: String(g.repo ?? ""),
-      branch: String(g.branch ?? "main"),
+      branch: String(g.ref ?? g.branch ?? "main"),
     })),
     mcpServers: (spec.mcp?.servers ?? []).map((s: any) => ({
       name: String(s.name ?? ""),
@@ -294,7 +313,9 @@ export function parseWorkspaceYAML(text: string, ws: AXWorkspace): AXWorkspace {
             : ""),
       ),
     })),
-    files: (spec.files ?? []).map((f: any) => String(f.path ?? "")),
+    files: (setup.files ?? spec.files ?? []).map((f: any) =>
+      String(f.path ?? ""),
+    ),
   };
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */

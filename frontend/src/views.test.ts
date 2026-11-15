@@ -98,10 +98,22 @@ describe("resources & designer models", () => {
       { name: "kind-ax", description: "Kind cluster", isCurrent: false },
     ]);
 
+    const tasksV1 = parseTasks(
+      "NAME          ATESPACE   STATE     ACTOR    AGE\ngemini-task   default    Working   act-1    3m\n",
+    );
+    expect(tasksV1[0]).toMatchObject({
+      id: "default/gemini-task",
+      name: "gemini-task",
+      phase: "running",
+      actor: "act-1",
+    });
+
     const detail = parseTaskYAML(
-      "apiVersion: ax.io/v1alpha1\nkind: Task\nspec:\n  image: repo/img@sha256:abcdef1234567\n  workspace:\n    name: demo-ws\n  debug: true\n",
+      "apiVersion: ax.io/v1alpha1\nkind: Task\nspec:\n  profile:\n    image: repo/img@sha256:abcdef1234567\n    resources:\n      limits:\n        cpu: '2'\n  commands: ['sh', '-c', 'echo hi']\n  workspace:\n    name: demo-ws\n  debug: true\nstatus:\n  state: TASK_STATE_WORKING\n  actorUid: uid-123\n",
     );
     expect(detail.workspace).toBe("demo-ws");
+    expect(detail.command).toEqual(["sh", "-c", "echo hi"]);
+    expect(detail.actorUid).toBe("uid-123");
     expect(detail.debug).toBe(true);
     expect(shortImage(detail.image)).toBe("img@abcdef1");
     expect(validateLabel("valid-name-1")).toBeNull();
@@ -193,7 +205,16 @@ describe("resources & designer models", () => {
     expect(genkitYaml).toContain("incident-runbook");
     expect(genkitYaml).toContain('command: "python3"');
     expect(genkitYaml).toContain('args: ["/workspace/tools/incident_mcp.py"]');
-    expect(genkitYaml).toContain('skills:\n    path: ".agents/skills"');
+    expect(genkitYaml).toContain('skills:\n      path: ".agents/skills"');
+    expect(genkitYaml).toContain("  profile:\n    image:");
+    expect(store.envFor("local")).toEqual({
+      AX_SERVER: "localhost:8090",
+      ATENET_ROUTER_ADDR: "127.0.0.1:50051",
+    });
+    expect(store.envFor("local-podman")).toEqual({
+      AX_SERVER: "localhost:8091",
+      ATENET_ROUTER_ADDR: "127.0.0.1:50052",
+    });
 
     // mcp-auditor §1: warn on shell wrappers or metacharacters in STDIO MCP server
     const risky = {

@@ -32,8 +32,8 @@ AX decouples its API server (`ax-server`) from low-level container or VM orchest
 | **Network Path** | Direct host routing over macOS `vmnet` bridge (`192.168.64.x:80`) | `kubectl port-forward` tunnels (`~/.ax/tunnels`) + `svc/atenet-router` |
 | **Guest Logs** | `container logs -f ate-<atespace>-<actor>` | `kubectl logs -l ate.dev/worker-pool` (JSON structured guest logs) |
 
-### Why `store.scope` Uses `--server` Instead of `--context` for `local`
-In `cmd/ax/main.go` (`internal/tunnel/tunnel.go:EnsureServerURL`), passing `--context <name>` instructs `ax` to look up a Kubernetes context in `~/.kube/config` and spawn `kubectl --context <name> port-forward -n ax-system svc/ax-server`. When targeting the `local` (`ate-local`) stack, `store.scope` in `frontend/src/model/store.ts` emits `['--server', 'localhost:8090', '-a', atespace]` and omits `--context`. This routes `ax get`, `ax apply`, `ax resume`, and `ax ssh` directly to the local `ax-server` on `:8090` and makes `<ax-terminal-session>` work without requiring custom environment variables on `SessionRequest`.
+### Why `store.scope` and `store.envFor` Use `--server` and `ATENET_ROUTER_ADDR` for `local`
+In `cmd/ax/main.go` (`internal/tunnel/tunnel.go:EnsureServerURL`), passing `--context <name>` instructs `ax` to look up a Kubernetes context in `~/.kube/config` and spawn `kubectl --context <name> port-forward -n ax-system svc/ax-server`. When targeting the `local` (`ate-local` Cluster A on `:8090` / `:50051`) or `local-podman` (`ate-local-b` Cluster B on `:8091` / `:50052`) stack, `store.scopeFor` in `frontend/src/model/store.ts` emits `['--server', 'localhost:8090', '-a', atespace]` (or `:8091`) and `store.envFor` exports `ATENET_ROUTER_ADDR=127.0.0.1:50051` (or `:50052`). This routes `ax get`, `ax apply`, `ax resume`, and `ax ssh` directly to the local `ax-server` and embedded `atenet-router` inside `ate-local` without invoking `kubectl port-forward`.
 
 ---
 

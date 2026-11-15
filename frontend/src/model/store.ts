@@ -591,11 +591,15 @@ export class Store extends EventTarget {
 
   envFor(context: string): Record<string, string> | undefined {
     if (context === "local") {
-      return { AX_SERVER: this.state.settings.localServer || "localhost:8090" };
+      return {
+        AX_SERVER: this.state.settings.localServer || "localhost:8090",
+        ATENET_ROUTER_ADDR: "127.0.0.1:50051",
+      };
     }
     if (context === "local-podman" || context === "local-b") {
       return {
         AX_SERVER: this.state.settings.localServerB || "localhost:8091",
+        ATENET_ROUTER_ADDR: "127.0.0.1:50052",
       };
     }
     const kc = this.state.kindKubeconfigs[context];
