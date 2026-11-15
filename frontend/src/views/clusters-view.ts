@@ -84,10 +84,10 @@ function layersFor(c: Cluster): {
     {
       id: "kind",
       iconName: "cpu",
-      title: "Kind",
+      title: c.isKind !== false ? "Kind" : "Kubernetes",
       health: kind,
       detail: !c.reachable
-        ? "Unreachable; is the container runtime running?"
+        ? "Unreachable; is the cluster or container runtime running?"
         : `${c.nodes?.ready ?? 0}/${c.nodes?.total ?? 0} nodes Ready${c.version ? ` · Kubernetes ${c.version.replace(/^v/, "")}` : ""}`,
     },
   ];
@@ -753,7 +753,7 @@ export class AxClusters extends LitElement {
 
         <div class="row cluster-actions">
           ${
-            axReady
+            axReady || (cl.isKind === false && cl.reachable)
               ? html`
                   <button
                     class="btn small primary"
@@ -772,7 +772,7 @@ export class AxClusters extends LitElement {
               : nothing
           }
           ${
-            cl.reachable
+            cl.isKind !== false && cl.reachable
               ? html`
                   <button
                     class="btn small"
@@ -789,14 +789,20 @@ export class AxClusters extends LitElement {
               : nothing
           }
           <div class="spacer"></div>
-          <button
-            class="btn small ghost danger"
-            ?disabled=${busy}
-            title="Delete ${cl.name}"
-            @click=${remove}
-          >
-            ${icon("trash", 12)} Delete
-          </button>
+          ${
+            cl.isKind !== false
+              ? html`
+                  <button
+                    class="btn small ghost danger"
+                    ?disabled=${busy}
+                    title="Delete ${cl.name}"
+                    @click=${remove}
+                  >
+                    ${icon("trash", 12)} Delete
+                  </button>
+                `
+              : html`<span class="caption faint">kubeconfig context</span>`
+          }
         </div>
         ${mine ? html`<div class="step-progress"></div>` : nothing}
       </div>

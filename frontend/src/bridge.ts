@@ -215,7 +215,7 @@ export function createFallbackStudio(
     if (req.args?.includes("version")) {
       return { status: 0, stdout: "ax version 0.3.1\n", stderr: "" };
     }
-    if (joined.includes("config get-contexts")) {
+    if (joined.includes("config get-contexts") && !req.args?.includes("-o")) {
       return {
         status: 0,
         stdout:
@@ -264,6 +264,17 @@ export function createFallbackStudio(
     }
     if (req.program === "kind" && req.args?.includes("clusters")) {
       return { status: 0, stdout: "ax-dev\n", stderr: "" };
+    }
+    if (
+      req.program === "kubectl" &&
+      req.args?.includes("get-contexts") &&
+      req.args?.includes("name")
+    ) {
+      return {
+        status: 0,
+        stdout: "kind-ax-dev\norbstack\ngke_demo_us-central1_ax-prod\n",
+        stderr: "",
+      };
     }
     if (req.program === "/bin/sh" && req.args?.[2] === "probe-ate-local") {
       return {
@@ -336,7 +347,7 @@ export function createFallbackStudio(
       os: "darwin",
       home: "/Users/dev",
       pathSeparator: ":",
-      version: "0.5.1",
+      version: "0.5.2",
     }),
     run: async (req) => (runHandler ? runHandler(req) : defaultRun(req)),
     pipe: async () => ({ status: 0, stdout: "", stderr: "" }),

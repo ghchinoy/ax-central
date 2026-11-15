@@ -422,6 +422,17 @@ describe("WebMCP ToolHost & AX tools", () => {
     expect(openActivityBtn).not.toBeUndefined();
     expect(openActivityBtn.disabled).toBe(false);
 
+    // Verify non-Kind kubeconfig clusters (orbstack, GKE) are discovered even when tools.kind is false (ax-central-00k.1)
+    clusters.set({
+      tools: { ...clusters.state.tools, kind: false, kubectl: true },
+    });
+    await clusters.refresh();
+    expect(clusters.state.clusters.map((c) => c.context)).toContain("orbstack");
+    expect(clusters.state.clusters.map((c) => c.name)).toContain("ax-prod");
+    expect(
+      clusters.state.clusters.find((c) => c.context === "orbstack")?.isKind,
+    ).toBe(false);
+
     // Verify Apple Container card uses concise "Restart" verb and flex-wrap (ax-central-x6z)
     const restartBtn = [
       ...clustersEl.shadowRoot!.querySelectorAll<HTMLButtonElement>(

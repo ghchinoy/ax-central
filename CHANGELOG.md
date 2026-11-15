@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and [Common Changelog](https://common-changelog.org/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.2] - 2026-11-15
+
+### Added
+- **Universal Kubeconfig Cluster Discovery & 3-Layer Readiness Probing (`clusters.ts`, `<ax-clusters>`):** Discover and probe all Kubernetes contexts from `kubectl config get-contexts` (`orbstack`, `rancher-desktop`, `colima`, `gke_*`, `tailscale-*`, and `kind-*`) even when `kind` is not installed on the host, rendering 3-layer readiness cards (`Kubernetes Nodes`, `Agent Substrate`, `AX + WorkerPool`) and **Open in Central** actions (`[ax-central-00k.1]`).
+
 ## [0.5.1] - 2026-11-15
 
 ### Added
@@ -110,6 +115,7 @@ _Initial release._
 ### Security
 - **WebMCP Argument-Injection & STDIO MCP Guards:** Enforced `reqSafeName` validation across all WebMCP tool inputs to reject leading `-` CLI flags, added `mcp-auditor` warnings for shell wrappers in Workspace STDIO MCP servers, and added `make security` (`npm audit` + Go readability checks) (`[ax-central-hw9]`).
 
+[0.5.2]: https://github.com/ghchinoy/ax-central/compare/v0.5.1...v0.5.2
 [0.5.1]: https://github.com/ghchinoy/ax-central/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/ghchinoy/ax-central/compare/v0.4.3...v0.5.0
 [0.4.3]: https://github.com/ghchinoy/ax-central/compare/v0.4.2...v0.4.3

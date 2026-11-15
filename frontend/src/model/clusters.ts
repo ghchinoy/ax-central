@@ -15,6 +15,7 @@
  */
 
 import { type ContainerRuntime, ensureStudioBridge } from "../bridge";
+import { isSafeResourceName, shortName } from "./resources";
 import { store } from "./store";
 
 export type Replicas = { ready: number; total: number } | null;
@@ -28,6 +29,7 @@ export interface ConsoleLine {
 export interface Cluster {
   name: string;
   context: string;
+  isKind?: boolean;
   reachable: boolean;
   nodes: Replicas;
   version: string;
@@ -125,10 +127,22 @@ const shq = (s: string) => `'${s.replace(/'/g, `'\\''`)}'`;
 export const NAME_RE = /^[a-z0-9]([-a-z0-9]*[a-z0-9])?$/;
 
 const PROBE = `
-kc=$(mktemp)
-if ! kind get kubeconfig --name "$1" > "$kc" 2>/dev/null; then echo reachable=0; rm -f "$kc"; exit 0; fi
-k() { kubectl --kubeconfig "$kc" --request-timeout=5s "$@" 2>/dev/null; }
-if ! n=$(k get nodes --no-headers); then echo reachable=0; rm -f "$kc"; exit 0; fi
+name="$1"; ctx="\${2:-kind-$1}"; kc=""
+if [ "\${ctx#kind-}" != "$ctx" ] && command -v kind >/dev/null 2>&1; then
+  kc=$(mktemp)
+  if ! kind get kubeconfig --name "$name" > "$kc" 2>/dev/null; then
+    rm -f "$kc"; kc=""
+  fi
+fi
+k() {
+  if [ -n "$kc" ]; then
+    kubectl --kubeconfig "$kc" --request-timeout=5s "$@" 2>/dev/null
+  else
+    kubectl --context "$ctx" --request-timeout=5s "$@" 2>/dev/null
+  fi
+}
+cleanup_kc() { [ -n "$kc" ] && rm -f "$kc" || true; }
+if ! n=$(k get nodes --no-headers); then echo reachable=0; cleanup_kc; exit 0; fi
 echo reachable=1
 echo "nodes=$(printf '%s\\n' "$n" | awk '$2 ~ /^Ready/ { r++ } END { print r+0 "/" NR }')"
 echo "version=$(k get nodes -o jsonpath='{.items[0].status.nodeInfo.kubeletVersion}')"
@@ -136,7 +150,7 @@ echo "substrate=$(k -n ate-system get deploy ate-api-server -o jsonpath='{.statu
 echo "commit=$(k get ns ate-system -o jsonpath='{.metadata.annotations.substrate-commit}')"
 echo "ax=$(k -n ax-system get deploy ax-server -o jsonpath='{.status.readyReplicas}/{.spec.replicas}')"
 echo "workers=$(k -n ax-system get workerpool ax-workers -o jsonpath='{.status.readyReplicas}/{.spec.replicas}')"
-rm -f "$kc"
+cleanup_kc
 `;
 
 const PROBE_ATE_LOCAL = `
@@ -523,7 +537,10 @@ export class ClustersStore extends EventTarget {
     this.set({ loading: true });
     try {
       const ateLocalPromise = this.refreshAteLocal();
-      if (!this.state.tools.kind || !this.state.runtime?.runtime) {
+      const canRunKind =
+        this.state.tools.kind && Boolean(this.state.runtime?.runtime);
+      const canRunKubectl = this.state.tools.kubectl;
+      if (!canRunKind && !canRunKubectl) {
         const ateLocal = await ateLocalPromise;
         const doctor = this.buildDoctorChecks(
           ateLocal,
@@ -537,31 +554,80 @@ export class ClustersStore extends EventTarget {
       const env = this.env();
       const [ateLocal, list, ctxs] = await Promise.all([
         ateLocalPromise,
-        window.studio.run({ program: "kind", args: ["get", "clusters"], env }),
-        window.studio.run({
-          program: "kubectl",
-          args: ["config", "get-contexts", "-o", "name"],
-        }),
+        canRunKind
+          ? window.studio.run({
+              program: "kind",
+              args: ["get", "clusters"],
+              env,
+            })
+          : Promise.resolve({ status: 1, stdout: "", stderr: "" }),
+        canRunKubectl
+          ? window.studio.run({
+              program: "kubectl",
+              args: ["config", "get-contexts", "-o", "name"],
+            })
+          : Promise.resolve({ status: 1, stdout: "", stderr: "" }),
       ]);
-      const names =
+      const kindNames =
         list.status === 0
           ? list.stdout
               .split("\n")
               .map((l) => l.trim())
               .filter((l) => NAME_RE.test(l))
           : [];
-      const contexts = new Set(ctxs.stdout.split("\n").map((l) => l.trim()));
+      const kubeContexts =
+        ctxs.status === 0
+          ? ctxs.stdout
+              .split("\n")
+              .map((l) => l.trim())
+              .filter((l) => l && isSafeResourceName(l))
+          : [];
+      const contexts = new Set(kubeContexts);
+
+      const targets: { name: string; context: string; isKind: boolean }[] = [];
+      const seenContexts = new Set<string>();
+      for (const name of kindNames) {
+        const context = `kind-${name}`;
+        seenContexts.add(context);
+        targets.push({ name, context, isKind: true });
+      }
+      for (const ctx of kubeContexts) {
+        if (
+          seenContexts.has(ctx) ||
+          ctx === "local" ||
+          ctx === "local-podman" ||
+          ctx === "local-b"
+        ) {
+          continue;
+        }
+        seenContexts.add(ctx);
+        if (ctx.startsWith("kind-")) {
+          const name = ctx.slice("kind-".length);
+          if (NAME_RE.test(name)) {
+            targets.push({ name, context: ctx, isKind: true });
+          }
+        } else {
+          targets.push({
+            name: shortName(ctx),
+            context: ctx,
+            isKind: false,
+          });
+        }
+      }
+
       const clustersList = await Promise.all(
-        names.map(async (name): Promise<Cluster> => {
+        targets.map(async (target): Promise<Cluster> => {
           const [r, hasTmpKc] = await Promise.all([
             window.studio.run({
               program: "/bin/sh",
-              args: ["-c", PROBE, "probe", name],
+              args: ["-c", PROBE, "probe", target.name, target.context],
               env,
             }),
-            window.studio.fileExists(
-              `${store.state.settings.repoPath}/.tmp/kubeconfig-${name}`,
-            ),
+            target.isKind
+              ? window.studio.fileExists(
+                  `${store.state.settings.repoPath}/.tmp/kubeconfig-${target.name}`,
+                )
+              : Promise.resolve(false),
           ]);
           const kv = Object.fromEntries(
             r.stdout
@@ -573,8 +639,9 @@ export class ClustersStore extends EventTarget {
               ]),
           );
           return {
-            name,
-            context: `kind-${name}`,
+            name: target.name,
+            context: target.context,
+            isKind: target.isKind,
             reachable: kv.reachable === "1",
             nodes: replicas(kv.nodes),
             version: kv.version ?? "",
@@ -582,13 +649,14 @@ export class ClustersStore extends EventTarget {
             substrateCommit: kv.commit ?? "",
             ax: replicas(kv.ax),
             workers: replicas(kv.workers),
-            inKubeconfig: contexts.has(`kind-${name}`) || hasTmpKc,
+            inKubeconfig:
+              !target.isKind || contexts.has(target.context) || hasTmpKc,
           };
         }),
       );
       const form = this.state.form.name
         ? this.state.form
-        : { ...this.state.form, name: freeName(names) };
+        : { ...this.state.form, name: freeName(kindNames) };
       const doctor = this.buildDoctorChecks(
         ateLocal,
         this.state.tools,
