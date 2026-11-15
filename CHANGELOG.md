@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and [Common Changelog](https://common-changelog.org/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] - 2026-11-15
+
+### Added
+- **Native A2A Agent Card Discovery, Interactive Prompt Console & Autonomic Wake-on-Request (`a2a.go`, `<ax-task-inspector>`, `store.ts`, WebMCP `prompt_agent`):** Probe `/.well-known/agent-card.json` via Go HTTP (`ate-target-actor` / `ATENET_ROUTER_ADDR`) or `ax ssh` fallback, display agent skills and version in `<ax-task-inspector>`, and dispatch JSON-RPC `message/send` turns with W3C `traceparent` correlation, multi-turn `contextId` sessions, automatic **Wake & Prompt** for `Suspended` tasks, and optional **Suspend on idle after reply** (`[ax-central-60o]`, `[ax-central-60o.1]`, `[ax-central-60o.2]`).
+- **Live 5/5 AX v0.1 Hero Demo Scoreboard Card & `run_hero_demo` WebMCP Tool (`clusters.ts`, `<ax-clusters>`, `tools.ts`):** Added an **AX v0.1 Hero Demo** card in `<ax-clusters>` and `run_hero_demo` WebMCP tool wrapping `~/projects/ax-experiments/hero-demo/run-live.sh --attach` and streaming the 5-step `PASS`/`STUB`/`FAIL` scoreboard live (`[ax-central-ybr]`, `[ax-central-ybr.2]`).
+- **Interactive Hero Demo Presenter Script & Walkthrough (`hack/demo-hero-central.sh`, `make demo-hero`, `docs/hero-demo.md`):** Added `--interactive` step-by-step presenter script and visual guide mapping all 5 Hero Demo steps across AX Central views and WebMCP tools (`[ax-central-ybr.3]`).
+
 ## [0.5.3] - 2026-11-15
 
 ### Added
@@ -120,6 +127,7 @@ _Initial release._
 ### Security
 - **WebMCP Argument-Injection & STDIO MCP Guards:** Enforced `reqSafeName` validation across all WebMCP tool inputs to reject leading `-` CLI flags, added `mcp-auditor` warnings for shell wrappers in Workspace STDIO MCP servers, and added `make security` (`npm audit` + Go readability checks) (`[ax-central-hw9]`).
 
+[0.6.0]: https://github.com/ghchinoy/ax-central/compare/v0.5.3...v0.6.0
 [0.5.3]: https://github.com/ghchinoy/ax-central/compare/v0.5.2...v0.5.3
 [0.5.2]: https://github.com/ghchinoy/ax-central/compare/v0.5.1...v0.5.2
 [0.5.1]: https://github.com/ghchinoy/ax-central/compare/v0.5.0...v0.5.1

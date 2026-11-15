@@ -23,7 +23,7 @@ import (
 	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
-var appVersion = "0.5.3"
+var appVersion = "0.6.0"
 
 // PlatformInfo describes the host environment for the frontend.
 type PlatformInfo struct {

@@ -81,6 +81,31 @@ export const STAGES: { id: StageID; title: string }[] = [
   { id: "ax", title: "AX control plane" },
 ];
 
+export interface HeroDemoStep {
+  step: number;
+  title: string;
+  status: "pending" | "running" | "pass" | "stub" | "fail";
+  note: string;
+}
+
+export const HERO_DEMO_STEPS: HeroDemoStep[] = [
+  { step: 1, title: "1. Local Up & Studio", status: "pending", note: "" },
+  { step: 2, title: "2. Warm Workspace Snapshot", status: "pending", note: "" },
+  {
+    step: 3,
+    title: "3. Starter Task, Session & Resume",
+    status: "pending",
+    note: "",
+  },
+  { step: 4, title: "4. Custom Image Task", status: "pending", note: "" },
+  {
+    step: 5,
+    title: "5. Remote Cluster Promotion",
+    status: "pending",
+    note: "",
+  },
+];
+
 export interface Operation {
   kind:
     | "create"
@@ -90,7 +115,8 @@ export interface Operation {
     | "local-up"
     | "local-down"
     | "local-reset"
-    | "bootstrap";
+    | "bootstrap"
+    | "hero-demo";
   cluster: string;
   stage: StageID | null;
   status: "running" | "ok" | "failed";
@@ -108,6 +134,7 @@ export interface NewCluster {
 export interface ClustersState {
   ateLocal: AppleContainerStack;
   doctor: PrerequisiteCheck[];
+  heroScoreboard: HeroDemoStep[];
   clusters: Cluster[];
   loading: boolean;
   loaded: boolean;
@@ -236,6 +263,7 @@ export class ClustersStore extends EventTarget {
       podmanActors: [],
     },
     doctor: [],
+    heroScoreboard: HERO_DEMO_STEPS.map((s) => ({ ...s })),
     clusters: [],
     loading: false,
     loaded: false,
@@ -864,6 +892,81 @@ export class ClustersStore extends EventTarget {
     await store.loadContexts();
   }
 
+  async runHeroDemo(opts?: {
+    attach?: boolean;
+    keepStack?: boolean;
+    step?: number;
+  }): Promise<{ ok: boolean; scoreboard: HeroDemoStep[] }> {
+    ensureStudioBridge();
+    const info = await window.studio.platform();
+    const repo = store.state.settings.repoPath.replace(/^~/, info.home);
+    const exp = store.state.settings.experimentsPath.replace(/^~/, info.home);
+    const liveScript = `${exp}/hero-demo/run-live.sh`;
+    const fallbackScript = `${repo}/hack/hero-demo/run.sh`;
+    const hasLive = await window.studio.fileExists(liveScript);
+
+    const flags: string[] = [];
+    if (hasLive) {
+      if (opts?.attach ?? true) flags.push("--attach");
+      if (opts?.keepStack ?? true) flags.push("--keep-stack");
+      if (opts?.step && opts.step >= 1 && opts.step <= 5) {
+        flags.push("--step", String(opts.step));
+      }
+    } else if (opts?.step && opts.step >= 1 && opts.step <= 5) {
+      flags.push("--step", String(opts.step));
+    }
+
+    this.set({
+      heroScoreboard: HERO_DEMO_STEPS.map((s) => ({
+        ...s,
+        status:
+          opts?.step && opts.step !== s.step ? "pending" : ("pending" as const),
+        note: "",
+      })),
+    });
+
+    const cmd = hasLive
+      ? `AX_REPO=${shq(repo)} AX_CENTRAL_REPO=${shq(`${info.home}/projects/ax-central`)} bash ${shq(liveScript)} ${flags.join(" ")}`
+      : `RUN_LIVE_STEPS=1 bash ${shq(fallbackScript)} ${flags.join(" ")}`;
+
+    const ok = await this.exec(
+      { kind: "hero-demo", cluster: "hero-demo" },
+      "Run AX v0.1 Hero Demo (5/5)",
+      cmd,
+    );
+    return { ok, scoreboard: this.state.heroScoreboard };
+  }
+
+  private parseHeroLine(line: string): void {
+    const startMatch = /^==>\s*\[Step\s*([1-5])\]/.exec(line);
+    if (startMatch) {
+      const n = Number(startMatch[1]);
+      this.set({
+        heroScoreboard: this.state.heroScoreboard.map((s) =>
+          s.step === n ? { ...s, status: "running" } : s,
+        ),
+      });
+      return;
+    }
+    const rowMatch =
+      /^\s*([1-5])\.\s+([^|]+?)\s*\|\s*([^|]+?)\s*\|\s*(.+)$/.exec(line);
+    if (rowMatch) {
+      const n = Number(rowMatch[1]);
+      const rawStatus = rowMatch[3]!.toUpperCase();
+      const note = rowMatch[4]!.trim();
+      const status: HeroDemoStep["status"] = rawStatus.includes("PASS")
+        ? "pass"
+        : rawStatus.includes("STUB")
+          ? "stub"
+          : "fail";
+      this.set({
+        heroScoreboard: this.state.heroScoreboard.map((s) =>
+          s.step === n ? { ...s, status, note } : s,
+        ),
+      });
+    }
+  }
+
   async addToKubeconfig(name: string): Promise<boolean> {
     if (!NAME_RE.test(name)) return false;
     const tmp = `$TMPDIR/ax-central-kind-${name}.yaml`;
@@ -936,6 +1039,9 @@ export class ClustersStore extends EventTarget {
       const offLine = window.studio.onStreamLine((l) => {
         if (l.id !== streamID) return;
         this.append(l.line);
+        if (op.kind === "hero-demo") {
+          this.parseHeroLine(l.line);
+        }
         const stage = staged ? stageFor(l.line) : null;
         if (stage) this.patchOp({ stage });
       });

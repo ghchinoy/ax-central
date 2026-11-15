@@ -469,14 +469,25 @@ function templateDraft(t: Template): Draft {
       return {
         ...d,
         name: "hero-demo-starter-task",
-        image: ghchinoyImage("agy-agent"),
+        image: ghchinoyImage("genkit-runner"),
         goal: "Add a subtract(a, b) function to /workspace/app/math_utils.py and a unit test in test_math.py.",
         cpu: 2,
         memoryMi: 4096,
         debug: true,
         configMode: "custom",
-        customConfig: `maxTurns: 25
-safetyGate: false
+        customConfig: `name: hero_coder
+description: Starter coding agent for the AX v0.1 hero demo.
+model: googleai/gemini-3.8-flash
+instruction: |
+  You are a concise Python engineer working in /workspace/app.
+  Always use read_file and write_file (under /workspace) when asked to update
+  code or tests, and keep replies to 1-2 short sentences.
+maxTurns: 10
+use:
+  - name: genkit-middleware/filesystem
+    config:
+      rootDirectory: /workspace
+      allowWriteAccess: true
 `,
         env: [{ id: uid(), key: "GEMINI_API_KEY", value: "" }],
         workspaceMode: "new",

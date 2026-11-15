@@ -1,11 +1,11 @@
 # AX Central
 
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-0.5.3-0b57d0.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.6.0-0b57d0.svg)](CHANGELOG.md)
 [![Go](https://img.shields.io/badge/Go-1.26+-00ADD8.svg)](go.mod)
 [![WebMCP](https://img.shields.io/badge/WebMCP-document.modelContext-188038.svg)](docs/reference/cli-and-webmcp-tools.md)
 
-A cross-platform desktop control plane (macOS, Linux, and Windows) for [AX](https://github.com/google/ax) and [Agent Substrate](https://github.com/agent-substrate/substrate) that lets you design tasks, watch them run, stream container and Kubernetes logs with OpenTelemetry trace waterfalls and inline HITL safety approvals, migrate tasks across contexts and atespaces over `ax ssh`, replay `.jsonl` swarm traces and inspect post-mortem `.ax-local/snapshots` archives, open interactive `ax ssh` terminals, manage local Apple `container` / Podman (`ate-local`) stacks and `kind` clusters, and expose 21 AX operations as WebMCP (`document.modelContext`) tools.
+A cross-platform desktop control plane (macOS, Linux, and Windows) for [AX](https://github.com/google/ax) and [Agent Substrate](https://github.com/agent-substrate/substrate) that lets you design tasks, send live A2A prompts with wake-on-request, stream container and Kubernetes logs with OpenTelemetry trace waterfalls and inline HITL safety approvals, migrate tasks across contexts and atespaces over `ax ssh`, replay `.jsonl` swarm traces and inspect post-mortem `.ax-local/snapshots` archives, open interactive `ax ssh` terminals, manage local Apple `container` / Podman (`ate-local`) stacks and Kubernetes clusters, and expose 23 AX operations as WebMCP (`document.modelContext`) tools.
 
 Built with [Wails v2](https://wails.io/) (Go) and [Lit 3](https://lit.dev/) WebComponents (TypeScript, Luminous 0.15–0.19 design tokens). Inspired by [@rakyll](https://github.com/rakyll)'s proposal in [google/ax#543](https://github.com/google/ax/issues/543) and prototype at [rakyll/ax-studio](https://github.com/rakyll/ax-studio), and developed as Track 4 of the [AX Experiments](https://github.com/ghchinoy/ax-experiments) suite.
 
@@ -93,7 +93,7 @@ AX Central bridges Lit 3 reactive stores (`store.ts`, `designer.ts`, `clusters.t
 | **Deploy** (`⌘3`) | `<ax-designer>` | Split-pane visual form (`v1alpha1` `spec.profile` & `Workspace.spec.setup`), live Composition Diagram, configurable **Image Artifact Registry Catalog** (`ghcr.io/ghchinoy/ax-images` & `ghcr.io/rakyll/ax-images`) with 1-click **`Resolve @sha256:`** pinning, unified read-only / raw YAML editor with `antigravity-dgem-gate` and `ax-experiments` templates, and STDIO MCP security checks. |
 | **Terminal** (`⌘4`) | `<ax-terminal>`, `<ax-terminal-session>` | Multi-tab interactive `ax ssh` sessions powered by `TerminalBackend` (`script(1)` PTY and `AXS-LINE-MODE` fallback via `ATENET_ROUTER_ADDR` / `atenet-router`) plus single-window launch in native `Ghostty.app`. |
 | **Clusters** (`⌘5`) | `<ax-clusters>` | Dual `ate-local` stack cards (**Cluster A** Apple `container` `:8090` / `:50051` and **Cluster B** Podman `:8091` / `:50052`), Kind cluster provisioning (`hack/setup-e2e-kind.sh` with Podman `docker-shim.sh` and `--metadata-file` support), and the in-app **Prerequisite Doctor** with streaming bootstrap repair. |
-| **WebMCP** (`⌘I`) | `<ax-webmcp-drawer>` | Registers 21 AX tools with `document.modelContext` (and the in-app fallback registry), with live call history, group toggles, and an interactive tool runner. |
+| **WebMCP** (`⌘I`) | `<ax-webmcp-drawer>` | Registers 23 AX tools with `document.modelContext` (and the in-app fallback registry), with live call history, group toggles, and an interactive tool runner. |
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/clusters-dark.webp">
@@ -106,6 +106,7 @@ Full documentation lives under [`docs/`](docs/index.md), organized into the four
 
 * **Tutorials (Learning-Oriented)**
   * [Run Your First Local Task in AX Central](docs/tutorials/quickstart-local-stack.md)
+  * [Live 5/5 AX v0.1 Hero Demo Walkthrough](docs/hero-demo.md)
 * **How-To Guides (Task-Oriented)**
   * [Manage Runtimes, Prerequisites, and Clusters](docs/how-to/manage-runtimes-and-clusters.md)
   * [Design Tasks and Automate with WebMCP](docs/how-to/design-tasks-and-use-webmcp.md)
@@ -149,7 +150,7 @@ To build a release archive locally on macOS:
 make release-darwin
 # Produces:
 #   build/bin/AX Central.app
-#   dist/AX-Central-v0.5.3-darwin-arm64.zip
+#   dist/AX-Central-v0.6.0-darwin-arm64.zip
 #   dist/SHA256SUMS
 ```
 

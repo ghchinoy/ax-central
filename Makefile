@@ -14,9 +14,9 @@
 
 # AX Central (Wails v2 + Lit WebComponents + WebMCP). See README.md.
 
-.PHONY: help build wails-build dev run-frontend test test-go test-frontend lint security check smoke-local smoke-crostini diagrams screenshots format doctor bootstrap version release-darwin clean
+.PHONY: help build wails-build dev run-frontend test test-go test-frontend lint security check smoke-local smoke-crostini demo-hero diagrams screenshots format doctor bootstrap version release-darwin clean
 
-VERSION := $(shell jq -r .info.productVersion wails.json 2>/dev/null || echo 0.5.3)
+VERSION := $(shell jq -r .info.productVersion wails.json 2>/dev/null || echo 0.6.0)
 LDFLAGS := -s -w -X main.appVersion=$(VERSION)
 WAILS := $(shell command -v wails 2>/dev/null || echo $(HOME)/go/bin/wails)
 WAILS_TAGS := $(shell if [ "$$(uname -s)" = "Linux" ] && command -v pkg-config >/dev/null 2>&1 && pkg-config --exists webkit2gtk-4.1 && ! pkg-config --exists webkit2gtk-4.0; then echo "-tags webkit2_41"; fi)
@@ -33,6 +33,7 @@ help:
 	@echo "make lint           - gofmt, go vet, golangci-lint, bash -n, tsc, prettier"
 	@echo "make security       - npm audit + node-security-audit + Go readability checks"
 	@echo "make smoke-local    - run E2E debian:12 task smoke test against local Apple container stack"
+	@echo "make demo-hero      - run live 5/5 AX v0.1 Hero Demo attached to AX Central (:8090/:8091)"
 	@echo "make diagrams       - render Luminous Graphviz .dot diagrams to light/dark WebP"
 	@echo "make screenshots    - capture light/dark WebP UI screenshots via Playwright + cwebp"
 	@echo "make format         - gofmt -w + prettier --write"
@@ -95,6 +96,9 @@ smoke-local:
 
 smoke-crostini:
 	bash hack/smoke-crostini.sh
+
+demo-hero:
+	bash hack/demo-hero-central.sh
 
 diagrams:
 	@for f in docs/diagrams/*.dot; do \

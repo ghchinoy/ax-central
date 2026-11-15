@@ -188,7 +188,7 @@ describe("resources & designer models", () => {
     expect(heroStarterYaml).toContain("math_utils.py");
     expect(heroStarterYaml).toContain("subtract(a, b)");
     expect(heroStarter.image).toContain(
-      "ghcr.io/ghchinoy/ax-images/agy-agent@sha256:bd8792bf",
+      "ghcr.io/ghchinoy/ax-images/genkit-runner@sha256:f5d74204",
     );
 
     const heroCustom = template("hero-demo-custom");
@@ -971,6 +971,31 @@ describe("WebMCP ToolHost & AX tools", () => {
       sig,
     );
     expect(movedReplace.ok).toBe(true);
+
+    // Verify prompt_agent (Wake-on-Prompt) and run_hero_demo (5/5 scoreboard) WebMCP tools (ax-central-60o, ax-central-ybr.2)
+    const prompted = await el.host.call(
+      "prompt_agent",
+      {
+        name: "shell-task-01",
+        prompt: "What function did you add?",
+        context_id: "hero-demo-session",
+        wake_if_suspended: true,
+        suspend_after: false,
+      },
+      sig,
+    );
+    expect(prompted.ok).toBe(true);
+    expect(prompted.reply).toContain("What function did you add?");
+    expect(prompted.trace_id).toBe("4ff8c58f13d6b4dff65b657638b245bb");
+
+    const heroRes = await el.host.call(
+      "run_hero_demo",
+      { attach: true, keep_stack: true },
+      sig,
+    );
+    expect(heroRes.ok).toBe(true);
+    expect(heroRes.passed).toBe(5);
+    expect(heroRes.total).toBe(5);
 
     const susp = await el.host.call(
       "suspend_task",

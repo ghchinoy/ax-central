@@ -992,6 +992,7 @@ export class AxClusters extends LitElement {
       "local-down": "Stopping",
       "local-reset": "Resetting",
       bootstrap: "Bootstrapping",
+      "hero-demo": "Running",
     }[op.kind];
     const done = {
       create: "Created",
@@ -1002,6 +1003,7 @@ export class AxClusters extends LitElement {
       "local-down": "Stopped",
       "local-reset": "Reset",
       bootstrap: "Bootstrapped",
+      "hero-demo": "Completed",
     }[op.kind];
     const title =
       op.status === "running"
@@ -1094,6 +1096,75 @@ export class AxClusters extends LitElement {
     return html`<div class=${cls}>${text}</div>`;
   };
 
+  private renderHeroDemoCard(): TemplateResult {
+    const c = clusters.state;
+    const busy = c.op?.status === "running";
+    const passCount = c.heroScoreboard.filter(
+      (s) => s.status === "pass",
+    ).length;
+
+    return html`
+      <div class="card new-cluster">
+        <div class="row new-cluster-head">
+          ${icon("sparkles", 15, { color: "var(--primary)" })}
+          <span>AX v0.1 Hero Demo</span>
+          <span class="spacer"></span>
+          <span class="caption mono faint">${passCount}/5 PASS</span>
+        </div>
+        <div class="caption muted" style="line-height:1.45">
+          Runs all 5 live steps (<span class="mono"
+            >hero-demo/run-live.sh --attach</span
+          >) across Cluster A &amp; Cluster B so warm snapshots, A2A turns, and
+          promoted tasks appear live in AX Central.
+        </div>
+        <div class="col" style="gap:5px;margin:4px 0">
+          ${c.heroScoreboard.map((st) => {
+            const ic: IconName =
+              st.status === "pass"
+                ? "circle-check"
+                : st.status === "fail"
+                  ? "circle-x"
+                  : st.status === "running"
+                    ? "loader"
+                    : st.status === "stub"
+                      ? "alert"
+                      : "circle-dashed";
+            const col =
+              st.status === "pass"
+                ? "var(--green)"
+                : st.status === "fail"
+                  ? "var(--danger)"
+                  : st.status === "running"
+                    ? "var(--primary)"
+                    : st.status === "stub"
+                      ? "var(--orange)"
+                      : "var(--text-3)";
+            return html`
+              <div
+                class="row"
+                style="gap:7px;font-size:12px"
+                title=${st.note || st.title}
+              >
+                ${icon(ic, 13, {
+                  color: col,
+                  className: st.status === "running" ? "spin" : "",
+                })}
+                <span class="ellipsis" style="flex:1">${st.title}</span>
+              </div>
+            `;
+          })}
+        </div>
+        <button
+          class="btn primary"
+          ?disabled=${busy}
+          @click=${() => void clusters.runHeroDemo({ attach: true, keepStack: true })}
+        >
+          ${icon("play", 13)} Run v0.1 Hero Demo (5/5)
+        </button>
+      </div>
+    `;
+  }
+
   override render() {
     const c = clusters.state;
     const running = c.op?.status === "running";
@@ -1141,7 +1212,8 @@ export class AxClusters extends LitElement {
               ${c.clusters.map((cl) => this.renderClusterCard(cl))}
             </div>
             <div class="col" style="gap:14px">
-              ${this.renderDoctorCard()} ${this.renderNewClusterForm()}
+              ${this.renderHeroDemoCard()} ${this.renderDoctorCard()}
+              ${this.renderNewClusterForm()}
             </div>
           </div>
 

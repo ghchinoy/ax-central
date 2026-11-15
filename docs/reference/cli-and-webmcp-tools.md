@@ -1,6 +1,6 @@
 # Reference: CLI, Shortcuts, and WebMCP Tools
 
-This reference documents AX Central's `Makefile` targets, `hack/doctor.sh` CLI flags and JSON output schema, keyboard shortcuts, and all 21 WebMCP tools registered in `frontend/src/tools.ts`.
+This reference documents AX Central's `Makefile` targets, `hack/doctor.sh` CLI flags and JSON output schema, keyboard shortcuts, and all 23 WebMCP tools registered in `frontend/src/tools.ts`.
 
 ## 1. `Makefile` Targets
 
@@ -88,6 +88,7 @@ All resource, context, and atespace names passed to WebMCP tools are validated b
 | `list_tasks` | `readOnly`, `untrusted` | `{}` | Lists all tasks in the current context and atespace with `id`, `name`, `atespace`, `phase`, `workspace`, `image`, `worker_ip`, `age`, and `selected`. |
 | `get_task` | `readOnly`, `untrusted` | `{ name: string }` | Returns full details, conditions, resources, and raw YAML manifest for a task by name. |
 | `select_task` | *(none)* | `{ name: string }` | Selects a task in the UI to open `<ax-task-inspector>` (pass `""` to close). |
+| `prompt_agent` | `consequential` | `{ name: string, prompt: string, context_id?: string, wake_if_suspended?: boolean, suspend_after?: boolean }` | Sends an A2A JSON-RPC `message/send` turn (with W3C `traceparent`) to an agent task, automatically waking `Suspended` tasks when `wake_if_suspended` is true. |
 | `suspend_task` | `consequential` | `{ name: string }` | Suspends a running or pending task (`ax suspend task <name>`). |
 | `resume_task` | *(none)* | `{ name: string }` | Resumes a suspended, failed, or completed task (`ax resume task <name>`). |
 | `move_task` | `consequential` | `{ name: string, target_context?: string, target_atespace?: string, delete_original?: boolean, overwrite_existing?: boolean }` | Recreates a task and its workspace in `target_context` / `target_atespace` and streams `/workspace` across over `ax ssh` (`tar cf - \| tar xf -`). |
@@ -115,4 +116,5 @@ All resource, context, and atespace names passed to WebMCP tools are validated b
 | `resolve_image_digest` | *(none)* | `{ image?: string, update_draft?: boolean }` | Resolves and pins the `@sha256:` manifest digest for an image reference. |
 | `list_clusters` | `readOnly` | `{}` | Returns container runtime info, `ate_local` stack health and microVM list, and `kind` `clusters`. |
 | `manage_local_stack` | `consequential` | `{ action: "up" \| "down" \| "reset" \| "status" \| "use" \| "multi-up" \| "multi-down" \| "use-b" }` | Starts, stops, resets, queries, or switches to the local Apple `container` / Podman (`ate-local` / `ate-local-b`) stacks via `examples/ate_local/local-stack.sh`. |
+| `run_hero_demo` | `consequential` | `{ attach?: boolean, keep_stack?: boolean, step?: number }` | Executes the 5-step AX v0.1 Hero Demo (`hero-demo/run-live.sh`) across Cluster A & Cluster B and returns the `5/5` scoreboard. |
 | `check_prerequisites` | `readOnly` | `{}` | Runs `hack/doctor.sh --json` to audit `go`, `/usr/local/bin/container`, `~/projects/ax` (`feat/ate-local-apple-container`), `.ax-local/bin/*`, `~/projects/ax-experiments`, `ax-agent-local:latest`, and `kind`/`kubectl`/`docker`/`podman`. |

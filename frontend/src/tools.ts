@@ -84,6 +84,7 @@ export const TOOL_GROUPS: Record<string, string[]> = {
     "list_tasks",
     "get_task",
     "select_task",
+    "prompt_agent",
     "suspend_task",
     "resume_task",
     "move_task",
@@ -105,6 +106,7 @@ export const TOOL_GROUPS: Record<string, string[]> = {
     "resolve_image_digest",
     "list_clusters",
     "manage_local_stack",
+    "run_hero_demo",
     "check_prerequisites",
   ],
 };
@@ -269,6 +271,70 @@ export const TOOLS: ToolDef[] = [
       const r = await ctx.store.resume(task);
       if (!r.ok) throw new ToolError(r.error);
       return { result: { resumed: task.name, ok: true } };
+    },
+  },
+  {
+    name: "prompt_agent",
+    description:
+      "Send an A2A JSON-RPC message/send prompt (with W3C traceparent correlation) to an agent task. Automatically wakes Suspended tasks when wake_if_suspended is true.",
+    inputSchema: obj(
+      {
+        name: { type: "string", description: "Name of the target agent task." },
+        prompt: {
+          type: "string",
+          description: "Natural-language prompt message to send to the agent.",
+        },
+        context_id: {
+          type: "string",
+          description:
+            'Optional A2A session contextId (defaults to "hero-demo-session").',
+        },
+        wake_if_suspended: {
+          type: "boolean",
+          description:
+            "Whether to resume the task first if it is currently Suspended (defaults to true).",
+        },
+        suspend_after: {
+          type: "boolean",
+          description:
+            "Whether to suspend the task back to scale-to-zero once the A2A turn finishes (defaults to false).",
+        },
+      },
+      ["name", "prompt"],
+    ),
+    consequential: true,
+    async execute(args, ctx) {
+      const name = reqSafeName(args, "name");
+      const prompt = reqStr(args, "prompt");
+      const task = ctx.store.state.tasks.find(
+        (t) => t.name === name || t.id === name,
+      );
+      if (!task) {
+        throw new ToolError(`Task "${name}" not found.`);
+      }
+      const contextId =
+        typeof args.context_id === "string" && args.context_id.trim()
+          ? args.context_id.trim()
+          : "hero-demo-session";
+      const wakeIfSuspended = args.wake_if_suspended !== false;
+      const suspendAfter = Boolean(args.suspend_after);
+      const res = await ctx.store.promptAgent(task, prompt, {
+        contextId,
+        wakeIfSuspended,
+        suspendAfter,
+      });
+      if (!res.ok) {
+        throw new ToolError(res.error || "A2A prompt failed.");
+      }
+      return {
+        result: {
+          task: task.name,
+          ok: res.ok,
+          reply: res.reply,
+          trace_id: res.traceId,
+          context_id: res.contextId,
+        },
+      };
     },
   },
   {
@@ -839,6 +905,47 @@ export const TOOLS: ToolDef[] = [
           ok,
           ate_local: ctx.clusters.state.ateLocal,
           log_tail: logTail,
+        },
+      };
+    },
+  },
+  {
+    name: "run_hero_demo",
+    description:
+      "Execute the 5-step AX v0.1 Hero Demo (~/projects/ax-experiments/hero-demo/run-live.sh) across Cluster A & Cluster B and return the 5/5 PASS/STUB/FAIL scoreboard.",
+    inputSchema: obj({
+      attach: {
+        type: "boolean",
+        description:
+          "Run against the active local-stack.sh multi-up (:8090 / :8091) so resources appear live in AX Central (defaults to true).",
+      },
+      keep_stack: {
+        type: "boolean",
+        description:
+          "Keep stack and demo resources running after completion (defaults to true).",
+      },
+      step: {
+        type: "number",
+        description: "Optional single step number (1-5) to run.",
+      },
+    }),
+    consequential: true,
+    async execute(args, ctx) {
+      const attach = args.attach !== false;
+      const keepStack = args.keep_stack !== false;
+      const step =
+        typeof args.step === "number" && args.step >= 1 && args.step <= 5
+          ? Math.round(args.step)
+          : undefined;
+      ctx.store.setSection("clusters");
+      const out = await ctx.clusters.runHeroDemo({ attach, keepStack, step });
+      await ctx.store.refresh(true);
+      return {
+        result: {
+          ok: out.ok,
+          passed: out.scoreboard.filter((s) => s.status === "pass").length,
+          total: out.scoreboard.length,
+          scoreboard: out.scoreboard,
         },
       };
     },

@@ -16,6 +16,7 @@
 
 import { css, html, LitElement, nothing, svg } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
+import type { A2APromptResult, AgentCardResult } from "../bridge";
 import {
   type IconName,
   icon,
@@ -160,6 +161,13 @@ export class AxTaskInspector extends LitElement {
   @state() private movingTask: AXTask | null = null;
   @state() private inspectorWidth = loadInspectorWidth();
   @state() private dragging = false;
+  @state() private agentCard: AgentCardResult | null = null;
+  @state() private cardProbedKey = "";
+  @state() private a2aPrompt = "";
+  @state() private a2aContextID = "hero-demo-session";
+  @state() private a2aSuspendAfter = false;
+  @state() private a2aSending = false;
+  @state() private a2aLastResult: A2APromptResult | null = null;
   private offStore: (() => void) | null = null;
 
   override connectedCallback(): void {
@@ -217,6 +225,211 @@ export class AxTaskInspector extends LitElement {
     await navigator.clipboard.writeText(manifest);
     this.copied = true;
     setTimeout(() => (this.copied = false), 1400);
+  }
+
+  private maybeProbeAgentCard(t: AXTask | null): void {
+    if (!t) {
+      this.agentCard = null;
+      this.cardProbedKey = "";
+      return;
+    }
+    const key = `${store.state.context}:${t.id}:${t.phase}`;
+    if (key === this.cardProbedKey) return;
+    this.cardProbedKey = key;
+    if (t.phase !== "running") {
+      return;
+    }
+    void store.probeAgentCard(t).then((card) => {
+      if (this.cardProbedKey === key) {
+        this.agentCard = card;
+      }
+    });
+  }
+
+  private async submitA2APrompt(t: AXTask): Promise<void> {
+    const prompt = this.a2aPrompt.trim();
+    if (!prompt || this.a2aSending) return;
+    this.a2aSending = true;
+    try {
+      const res = await store.promptAgent(t, prompt, {
+        contextId: this.a2aContextID.trim() || "ax-central-session",
+        wakeIfSuspended: true,
+        suspendAfter: this.a2aSuspendAfter,
+      });
+      this.a2aLastResult = res;
+      if (res.ok) {
+        this.a2aPrompt = "";
+      }
+    } finally {
+      this.a2aSending = false;
+    }
+  }
+
+  private renderA2AConsole(t: AXTask) {
+    const card = this.agentCard;
+    return html`
+      <section class="inspector-section">
+        <div class="row" style="margin-bottom:8px">
+          <h4 style="margin:0">A2A Agent &amp; Prompt Console</h4>
+          <span class="spacer"></span>
+          <button
+            class="btn small ghost"
+            title="Probe /.well-known/agent-card.json"
+            @click=${() => {
+              this.cardProbedKey = "";
+              this.maybeProbeAgentCard(t);
+            }}
+          >
+            ${icon("refresh", 11)} Probe Card
+          </button>
+        </div>
+
+        ${
+          card?.available
+            ? html`
+                <div class="a2a-card">
+                  <div class="row">
+                    ${icon("sparkles", 13, { color: "var(--primary)" })}
+                    <strong class="mono"
+                      ><bdi dir="ltr">${card.name || t.name}</bdi></strong
+                    >
+                    ${
+                      card.version
+                        ? html`<span class="caption faint mono"
+                            >v${card.version}</span
+                          >`
+                        : nothing
+                    }
+                  </div>
+                  ${
+                    card.description
+                      ? html`<div class="caption muted">
+                          ${card.description}
+                        </div>`
+                      : nothing
+                  }
+                  ${
+                    card.skills?.length
+                      ? html`
+                          <div class="row" style="gap:4px;flex-wrap:wrap">
+                            ${card.skills.map(
+                              (sk) => html`
+                                <span
+                                  class="a2a-skill-pill"
+                                  title=${sk.description}
+                                  ><bdi dir="ltr"
+                                    >${sk.name || sk.id}</bdi
+                                  ></span
+                                >
+                              `,
+                            )}
+                          </div>
+                        `
+                      : nothing
+                  }
+                </div>
+              `
+            : nothing
+        }
+
+        <div class="col" style="gap:6px">
+          <div class="row" style="gap:6px">
+            <label class="caption faint" for="a2a-ctx-id">Session</label>
+            <input
+              id="a2a-ctx-id"
+              class="input mono"
+              style="flex:1;height:26px;font-size:11.5px"
+              aria-label="A2A Session Context ID"
+              .value=${this.a2aContextID}
+              placeholder="hero-demo-session"
+              @input=${(e: Event) =>
+                (this.a2aContextID = (e.target as HTMLInputElement).value)}
+            />
+          </div>
+          <textarea
+            class="textarea"
+            rows="2"
+            aria-label="A2A prompt message"
+            placeholder=${
+              t.phase === "running"
+                ? "Send an A2A message/send turn to this agent…"
+                : "Task is suspended — sending a prompt will wake it automatically…"
+            }
+            .value=${this.a2aPrompt}
+            @input=${(e: Event) =>
+              (this.a2aPrompt = (e.target as HTMLTextAreaElement).value)}
+          ></textarea>
+          <div class="row" style="gap:8px;flex-wrap:wrap">
+            <label
+              class="row caption muted"
+              style="gap:5px;cursor:pointer"
+              title="Automatically suspend the sandbox back to scale-to-zero once the A2A turn finishes"
+            >
+              <input
+                type="checkbox"
+                .checked=${this.a2aSuspendAfter}
+                @change=${(e: Event) =>
+                  (this.a2aSuspendAfter = (
+                    e.target as HTMLInputElement
+                  ).checked)}
+              />
+              Suspend on idle after reply
+            </label>
+            <span class="spacer"></span>
+            <button
+              class="btn small primary"
+              ?disabled=${!this.a2aPrompt.trim() || this.a2aSending}
+              @click=${() => void this.submitA2APrompt(t)}
+            >
+              ${icon(this.a2aSending ? "loader" : "play", 12, {
+                className: this.a2aSending ? "spin" : "",
+              })}
+              ${
+                this.a2aSending
+                  ? "Sending…"
+                  : t.phase === "running"
+                    ? "Send Prompt"
+                    : "Wake & Prompt"
+              }
+            </button>
+          </div>
+          ${
+            this.a2aLastResult
+              ? html`
+                  <div
+                    class="a2a-reply selectable ${
+                      this.a2aLastResult.ok ? "" : "err"
+                    }"
+                  >
+                    <div class="row" style="margin-bottom:4px">
+                      <strong style="font-size:11px">
+                        ${this.a2aLastResult.ok ? "Agent Reply" : "A2A Error"}
+                      </strong>
+                      ${
+                        this.a2aLastResult.traceId
+                          ? html`<span class="caption faint mono"
+                              >trace:${this.a2aLastResult.traceId.slice(
+                                0,
+                                8,
+                              )}</span
+                            >`
+                          : nothing
+                      }
+                    </div>
+                    <div style="font-size:12px;white-space:pre-wrap">
+                      ${
+                        this.a2aLastResult.ok
+                          ? this.a2aLastResult.reply
+                          : this.a2aLastResult.error
+                      }
+                    </div>
+                  </div>
+                `
+              : nothing
+          }
+        </div>
+      </section>
+    `;
   }
 
   private renderLifecycle(phase: Phase, conditions: Condition[]) {
@@ -292,6 +505,7 @@ export class AxTaskInspector extends LitElement {
     const s = store.state;
     const t =
       this.task ?? s.tasks.find((x) => x.id === s.selectedTaskID) ?? null;
+    this.maybeProbeAgentCard(t);
     const detail = t ? s.details[t.id] : undefined;
 
     const fields: [string, string | undefined][] = t
@@ -550,6 +764,7 @@ export class AxTaskInspector extends LitElement {
                           `
                         : nothing
                     }
+                    ${this.renderA2AConsole(t)}
 
                     <section class="inspector-section">
                       <h4>Logs &amp; Telemetry</h4>
@@ -756,6 +971,35 @@ export class AxTaskInspector extends LitElement {
       }
       .manifest-text {
         white-space: pre;
+      }
+      .a2a-card {
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
+        padding: 8px 10px;
+        margin-bottom: 8px;
+        border-radius: var(--radius-s);
+        background: var(--surface-container);
+        border: 1px solid var(--border);
+        font-size: 12px;
+      }
+      .a2a-skill-pill {
+        padding: 1px 7px;
+        border-radius: 999px;
+        font-size: 10.5px;
+        background: var(--accent-soft);
+        color: var(--primary);
+        font-weight: 500;
+      }
+      .a2a-reply {
+        padding: 8px 10px;
+        border-radius: var(--radius-s);
+        background: var(--surface-container);
+        border: 1px solid var(--border);
+      }
+      .a2a-reply.err {
+        border-color: color-mix(in srgb, var(--danger) 45%, var(--border));
+        color: var(--danger);
       }
       .lifecycle {
         display: flex;

@@ -14,7 +14,13 @@
  * limitations under the License.
  */
 
-import { type CommandResult, ensureStudioBridge } from "../bridge";
+import {
+  type A2APromptResult,
+  type A2ATargetRequest,
+  type AgentCardResult,
+  type CommandResult,
+  ensureStudioBridge,
+} from "../bridge";
 import {
   type AXContext,
   type AXModel,
@@ -863,6 +869,83 @@ export class Store extends EventTarget {
     });
     if (r.status !== 0 || !r.stdout.trim()) return [];
     return parseTraceJSONLToFrames(r.stdout);
+  }
+
+  a2aTargetFor(t: AXTask): A2ATargetRequest {
+    const ctx = this.state.context;
+    const env = this.envFor(ctx);
+    const routerAddr = env?.ATENET_ROUTER_ADDR ?? "";
+    const endpoint = routerAddr || (t.workerIP ? `${t.workerIP}` : "");
+    const actorName = t.actor || t.name;
+    return {
+      endpoint,
+      targetActor: routerAddr ? `${t.atespace}/${actorName}` : undefined,
+      axProgram: this.axPathFor(ctx),
+      scope: this.scopeFor(ctx, t.atespace),
+      taskName: t.name,
+      env,
+    };
+  }
+
+  async probeAgentCard(t: AXTask): Promise<AgentCardResult> {
+    if (!isSafeResourceName(t.name)) {
+      return { available: false, error: "Invalid task name" };
+    }
+    ensureStudioBridge();
+    return window.studio.probeAgentCard(this.a2aTargetFor(t));
+  }
+
+  async promptAgent(
+    t: AXTask,
+    prompt: string,
+    opts?: {
+      contextId?: string;
+      wakeIfSuspended?: boolean;
+      suspendAfter?: boolean;
+    },
+  ): Promise<A2APromptResult> {
+    if (!isSafeResourceName(t.name)) {
+      return {
+        ok: false,
+        reply: "",
+        traceId: "",
+        contextId: opts?.contextId ?? "",
+        rawJson: "",
+        error: "Invalid task name",
+      };
+    }
+    ensureStudioBridge();
+    const wasSuspended = t.phase !== "running";
+    if (wasSuspended && (opts?.wakeIfSuspended ?? true)) {
+      const res = await this.resume(t);
+      if (!res.ok) {
+        return {
+          ok: false,
+          reply: "",
+          traceId: "",
+          contextId: opts?.contextId ?? "",
+          rawJson: "",
+          error: `Wake-on-prompt resume failed: ${res.error}`,
+        };
+      }
+    }
+    const refreshedTask = this.state.tasks.find((x) => x.id === t.id) ?? t;
+    const out = await window.studio.sendA2APrompt({
+      ...this.a2aTargetFor(refreshedTask),
+      prompt,
+      contextId: opts?.contextId,
+    });
+    this.log(
+      `A2A prompt → ${t.name}`,
+      out.ok ? out.reply.slice(0, 120) : (out.error ?? "failed"),
+      out.ok,
+    );
+    if (opts?.suspendAfter) {
+      await this.suspend(refreshedTask);
+    } else {
+      await this.refresh(true);
+    }
+    return out;
   }
 
   private async fetchDetails(

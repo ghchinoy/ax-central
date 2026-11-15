@@ -89,10 +89,52 @@ export interface TraySummary {
   }[];
 }
 
+export interface A2ASkill {
+  id: string;
+  name: string;
+  description: string;
+}
+
+export interface AgentCardResult {
+  available: boolean;
+  name?: string;
+  description?: string;
+  version?: string;
+  url?: string;
+  skills?: A2ASkill[];
+  rawJson?: string;
+  error?: string;
+}
+
+export interface A2ATargetRequest {
+  endpoint: string;
+  targetActor?: string;
+  axProgram?: string;
+  scope?: string[];
+  taskName?: string;
+  env?: Record<string, string>;
+}
+
+export interface A2APromptRequest extends A2ATargetRequest {
+  prompt: string;
+  contextId?: string;
+}
+
+export interface A2APromptResult {
+  ok: boolean;
+  reply: string;
+  traceId: string;
+  contextId: string;
+  rawJson: string;
+  error?: string;
+}
+
 export interface StudioAPI {
   platform(): Promise<PlatformInfo>;
   run(req: RunRequest): Promise<CommandResult>;
   pipe(req: PipeRequest): Promise<CommandResult>;
+  probeAgentCard(req: A2ATargetRequest): Promise<AgentCardResult>;
+  sendA2APrompt(req: A2APromptRequest): Promise<A2APromptResult>;
   stream(req: StreamRequest): Promise<void>;
   cancelStream(id: string): Promise<void>;
   onStreamLine(cb: (l: StreamLine) => void): () => void;
@@ -118,6 +160,8 @@ interface WailsAppBindings {
   Platform(): Promise<PlatformInfo>;
   Run(req: RunRequest): Promise<CommandResult>;
   Pipe(req: PipeRequest): Promise<CommandResult>;
+  ProbeAgentCard(req: A2ATargetRequest): Promise<AgentCardResult>;
+  SendA2APrompt(req: A2APromptRequest): Promise<A2APromptResult>;
   Stream(req: StreamRequest): Promise<void>;
   CancelStream(id: string): Promise<void>;
   StartSession(req: SessionRequest): Promise<void>;
@@ -169,6 +213,8 @@ function createWailsStudio(
     platform: () => goApp.Platform(),
     run: (req) => goApp.Run(req),
     pipe: (req) => goApp.Pipe(req),
+    probeAgentCard: (req) => goApp.ProbeAgentCard(req),
+    sendA2APrompt: (req) => goApp.SendA2APrompt(req),
     stream: (req) => goApp.Stream(req),
     cancelStream: (id) => goApp.CancelStream(id),
     onStreamLine: (cb) => onEvent<StreamLine>("stream:line", cb),
@@ -347,10 +393,30 @@ export function createFallbackStudio(
       os: "darwin",
       home: "/Users/dev",
       pathSeparator: ":",
-      version: "0.5.3",
+      version: "0.6.0",
     }),
     run: async (req) => (runHandler ? runHandler(req) : defaultRun(req)),
     pipe: async () => ({ status: 0, stdout: "", stderr: "" }),
+    probeAgentCard: async (req) => ({
+      available: true,
+      name: req.taskName || "triage_agent",
+      description: "Declarative Genkit / A2A coding agent",
+      version: "0.2.0",
+      skills: [
+        {
+          id: "workspace_coder",
+          name: "Workspace Engineer",
+          description: "Inspects and updates files in /workspace",
+        },
+      ],
+    }),
+    sendA2APrompt: async (req) => ({
+      ok: true,
+      reply: `Completed turn for "${req.prompt}"`,
+      traceId: "4ff8c58f13d6b4dff65b657638b245bb",
+      contextId: req.contextId || "ax-central-session",
+      rawJson: '{"jsonrpc":"2.0","result":{"role":"agent"}}',
+    }),
     stream: async (req) => {
       queueMicrotask(() => {
         if (req.commandLine.includes("container logs")) {
@@ -410,6 +476,27 @@ export function createFallbackStudio(
                 time: "2026-11-01T12:00:02Z",
               }),
             });
+          }
+        } else if (req.commandLine.includes("hero-demo")) {
+          const heroLines = [
+            "==> [Step 1] Local Up & Studio",
+            "==> [Step 2] Warm Workspace Snapshot",
+            "==> [Step 3] Starter Task, Session & Resume",
+            "==> [Step 4] Custom Image Task",
+            "==> [Step 5] Remote Cluster Promotion",
+            "  1. Local Up & Studio               | 🟢 PASS | Cluster A + atenet-router up",
+            "  2. Warm Workspace Snapshot         | 🟢 PASS | Tag hero-demo-ws-warm COMPLETED",
+            "  3. Starter Task, Session & Resume  | 🟢 PASS | Session Turn 1 & Turn 2 verified",
+            "  4. Custom Image Task               | 🟢 PASS | python:3.12-slim passed 2/2 unit tests",
+            "  5. Remote Cluster Promotion        | 🟢 PASS | Promoted to Cluster B & passed 2/2 unit tests",
+          ];
+          for (const line of heroLines) {
+            for (const cb of lineListeners) {
+              cb({ id: req.id, line });
+            }
+          }
+          for (const cb of exitListeners) {
+            cb({ id: req.id, status: 0 });
           }
         } else {
           for (const cb of lineListeners) {

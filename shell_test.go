@@ -16,6 +16,8 @@ package main
 
 import (
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -483,5 +485,55 @@ exit 0
 	want := "{\"image.name\":\"localhost:5001/app:v1\",\"containerimage.digest\":\"sha256:deadbeefcafe\"}\n"
 	if string(gotBytes) != want {
 		t.Fatalf("os.ReadFile(%q) = %q, want %q", metaFile, string(gotBytes), want)
+	}
+}
+
+func TestAppA2AClient(t *testing.T) {
+	var seenTargetActor string
+	var seenTraceparent string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seenTargetActor = r.Header.Get("ate-target-actor")
+		if r.Method == http.MethodGet && r.URL.Path == "/.well-known/agent-card.json" {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"name":"hero_coder","description":"Hero Demo Starter Agent","version":"0.2.0","skills":[{"id":"code","name":"Python Engineer","description":"Edits /workspace/app"}]}`))
+			return
+		}
+		if r.Method == http.MethodPost && r.URL.Path == "/" {
+			seenTraceparent = r.Header.Get("traceparent")
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":"1","result":{"role":"agent","parts":[{"kind":"text","text":"Added subtract(a, b) and unit tests."}]}}`))
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer srv.Close()
+
+	app := NewApp()
+	cardReq := A2ATargetRequest{
+		Endpoint:    srv.URL,
+		TargetActor: "default/hero-demo-starter-task",
+	}
+	card := app.ProbeAgentCard(cardReq)
+	if !card.Available || card.Name != "hero_coder" || len(card.Skills) != 1 {
+		t.Fatalf("app.ProbeAgentCard(%+v) = %+v, want Available=true Name=hero_coder len(Skills)=1", cardReq, card)
+	}
+	if seenTargetActor != "default/hero-demo-starter-task" {
+		t.Fatalf("ate-target-actor header = %q, want %q", seenTargetActor, "default/hero-demo-starter-task")
+	}
+
+	promptReq := A2APromptRequest{
+		A2ATargetRequest: cardReq,
+		Prompt:           "Add subtract(a, b)",
+		ContextID:        "hero-demo-session",
+	}
+	res := app.SendA2APrompt(promptReq)
+	if !res.OK {
+		t.Fatalf("app.SendA2APrompt(%+v) = %+v, want OK=true", promptReq, res)
+	}
+	if res.Reply != "Added subtract(a, b) and unit tests." {
+		t.Fatalf("app.SendA2APrompt(%+v) Reply = %q, want %q", promptReq, res.Reply, "Added subtract(a, b) and unit tests.")
+	}
+	if len(res.TraceID) != 32 || !strings.HasPrefix(seenTraceparent, "00-"+res.TraceID+"-") {
+		t.Fatalf("traceparent = %q (TraceID=%q), want 00-<32hex>-...", seenTraceparent, res.TraceID)
 	}
 }
