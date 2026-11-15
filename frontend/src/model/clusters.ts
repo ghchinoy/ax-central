@@ -925,8 +925,12 @@ export class ClustersStore extends EventTarget {
       })),
     });
 
+    const preClean = [
+      "command -v container >/dev/null 2>&1 && container delete --force ate-apple-default-hero-demo-custom-task ate-default-hero-demo-custom-task ate-apple-default-hero-demo-starter-task ate-default-hero-demo-starter-task >/dev/null 2>&1 || true",
+      "command -v podman >/dev/null 2>&1 && podman rm -f ate-podman-default-hero-demo-custom-task ate-podman-default-hero-demo-starter-task >/dev/null 2>&1 || true",
+    ].join("; ");
     const cmd = hasLive
-      ? `AX_REPO=${shq(repo)} AX_CENTRAL_REPO=${shq(`${info.home}/projects/ax-central`)} bash ${shq(liveScript)} ${flags.join(" ")}`
+      ? `${preClean}; AX_REPO=${shq(repo)} AX_CENTRAL_REPO=${shq(`${info.home}/projects/ax-central`)} bash ${shq(liveScript)} ${flags.join(" ")}`
       : `RUN_LIVE_STEPS=1 bash ${shq(fallbackScript)} ${flags.join(" ")}`;
 
     const ok = await this.exec(
@@ -934,6 +938,7 @@ export class ClustersStore extends EventTarget {
       "Run AX v0.1 Hero Demo (5/5)",
       cmd,
     );
+    await store.refresh(true);
     return { ok, scoreboard: this.state.heroScoreboard };
   }
 
