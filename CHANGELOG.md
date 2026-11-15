@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and [Common Changelog](https://common-changelog.org/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.3] - 2026-11-15
+
+### Added
+- **AX v0.1 Hero Demo Presets & `ghchinoy/ax-images` `v0.2.0` Digests (`designer.ts`, `tools.ts`):** Updated `GHCHINOY_IMAGE_DIGESTS` (`agy-agent`, `dgem-agent`, `genkit-runner`, `swarm-agent`) to `ghchinoy/ax-images` `v0.2.0` (post-`#587` `Profile` / `Workspace.setup` / `goal` / `commands` multi-arch digests) and added `hero-demo-starter` (Step 2 `hero-demo-ws` + Step 3 starter agent) and `hero-demo-custom` (Step 4 stock `python:3.12-slim` unittest runner) templates in `<ax-designer>` and `load_template` (`[ax-central-ybr.1]`).
+
 ## [0.5.2] - 2026-11-15
 
 ### Added
@@ -115,6 +120,7 @@ _Initial release._
 ### Security
 - **WebMCP Argument-Injection & STDIO MCP Guards:** Enforced `reqSafeName` validation across all WebMCP tool inputs to reject leading `-` CLI flags, added `mcp-auditor` warnings for shell wrappers in Workspace STDIO MCP servers, and added `make security` (`npm audit` + Go readability checks) (`[ax-central-hw9]`).
 
+[0.5.3]: https://github.com/ghchinoy/ax-central/compare/v0.5.2...v0.5.3
 [0.5.2]: https://github.com/ghchinoy/ax-central/compare/v0.5.1...v0.5.2
 [0.5.1]: https://github.com/ghchinoy/ax-central/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/ghchinoy/ax-central/compare/v0.4.3...v0.5.0

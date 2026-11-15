@@ -169,10 +169,11 @@ describe("resources & designer models", () => {
 
     const agyGated = template("antigravity-dgem-gate");
     expect(agyGated.image).toContain(
-      "ghcr.io/ghchinoy/ax-images/agy-agent@sha256:904b3b71",
+      "ghcr.io/ghchinoy/ax-images/agy-agent@sha256:bd8792bf",
     );
     const agyGatedYaml = generate(agyGated, true);
     expect(agyGatedYaml).toContain("safetyGate: true");
+    expect(agyGatedYaml).toContain("goal:\n    spec:");
     expect(agyGatedYaml.length).toBeLessThan(16 * 1024);
     expect(
       agyGated.env.filter((kv) => /KEY|TOKEN|SECRET|PASSWORD/i.test(kv.key)),
@@ -180,6 +181,21 @@ describe("resources & designer models", () => {
     expect(
       issues(agyGated).filter((i) => i.text.includes("credential")),
     ).toHaveLength(1);
+
+    const heroStarter = template("hero-demo-starter");
+    const heroStarterYaml = generate(heroStarter, true);
+    expect(heroStarterYaml).toContain('name: "hero-demo-ws"');
+    expect(heroStarterYaml).toContain("math_utils.py");
+    expect(heroStarterYaml).toContain("subtract(a, b)");
+    expect(heroStarter.image).toContain(
+      "ghcr.io/ghchinoy/ax-images/agy-agent@sha256:bd8792bf",
+    );
+
+    const heroCustom = template("hero-demo-custom");
+    const heroCustomYaml = generate(heroCustom, true);
+    expect(heroCustom.image).toBe("python:3.12-slim");
+    expect(heroCustomYaml).toContain('"unittest"');
+    expect(heroCustomYaml).toContain('name: "hero-demo-ws"');
 
     const claudeManaged = template("claude-managed-agents");
     const claudeYaml = generate(claudeManaged, true);
@@ -597,9 +613,9 @@ describe("WebMCP ToolHost & AX tools", () => {
       },
       sig,
     );
-    expect(resolvedDig.digest).toContain("sha256:a077fb0079b5513aa4f2df37");
+    expect(resolvedDig.digest).toContain("sha256:191df51f421c45093f2e8f07");
     expect(designer.draft.image).toContain(
-      "ghcr.io/ghchinoy/ax-images/dgem-agent@sha256:a077fb0079b5513aa4f2df37",
+      "ghcr.io/ghchinoy/ax-images/dgem-agent@sha256:191df51f421c45093f2e8f07",
     );
     await el.host.call(
       "remove_image_registry",

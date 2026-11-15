@@ -503,7 +503,7 @@ export const TOOLS: ToolDef[] = [
           type: "string",
           enum: TEMPLATES.map((t) => t.id),
           description:
-            "Template ID: blank, simple, ate-local, genkit-apple-container, swarm-reviewer, antigravity-dgem-gate, antigravity, gemini, openai, claude-managed-agents, or github-actions.",
+            "Template ID: blank, simple, ate-local, hero-demo-starter, hero-demo-custom, genkit-apple-container, swarm-reviewer, antigravity-dgem-gate, antigravity, gemini, openai, claude-managed-agents, or github-actions.",
         },
       },
       ["template"],

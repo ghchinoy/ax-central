@@ -23,6 +23,8 @@ export type Template =
   | "blank"
   | "simple"
   | "ate-local"
+  | "hero-demo-starter"
+  | "hero-demo-custom"
   | "genkit-apple-container"
   | "swarm-reviewer"
   | "antigravity-dgem-gate"
@@ -52,13 +54,13 @@ export const REGISTRIES_KEY = "ax-central.registries";
 export const GHCHINOY_AX_IMAGES = "ghcr.io/ghchinoy/ax-images";
 export const GHCHINOY_IMAGE_DIGESTS = {
   "agy-agent":
-    "sha256:904b3b71f6bf7559d8562ea5875a0871e643e0a0ae5b844b634d55b518bbdfb1",
+    "sha256:bd8792bf378a2ba2d8953934ed3a2b195d8b9c9063a4f58a31f1b5ebea75e47f",
   "dgem-agent":
-    "sha256:a077fb0079b5513aa4f2df37bc41834e7023655281127cae3011f99285f0a586",
+    "sha256:191df51f421c45093f2e8f07d00a2237293be12ff464a1aca0d0b4a43258ccb3",
   "genkit-runner":
-    "sha256:591af6440a2b1e2a2959843eb4ec60c956c80f762b8815b10c5c390df99cc57f",
+    "sha256:f5d7420468b7f1dec8304d7efa1dbe0ca2bb86a1e552181f823630412e01ee06",
   "swarm-agent":
-    "sha256:42121723b00ef2dc90d62dcae82c913c10d31d8af3d9a3a7e63bc23f7d4e61b5",
+    "sha256:e8e2e27f95855314e08f3f06bf224895599bbdfed6d467116855d2ce2a7e64bc",
 };
 
 export interface KeyValue {
@@ -135,6 +137,16 @@ export const TEMPLATES: { id: Template; title: string; group?: string }[] = [
   {
     id: "ate-local",
     title: "Apple Container Task (ate-local)",
+    group: "ax-experiments",
+  },
+  {
+    id: "hero-demo-starter",
+    title: "v0.1 Hero Demo: Workspace + Starter Agent",
+    group: "ax-experiments",
+  },
+  {
+    id: "hero-demo-custom",
+    title: "v0.1 Hero Demo: Custom Python Unittest",
     group: "ax-experiments",
   },
   {
@@ -453,6 +465,41 @@ function templateDraft(t: Template): Draft {
         memoryMi: 1024,
         debug: true,
       };
+    case "hero-demo-starter":
+      return {
+        ...d,
+        name: "hero-demo-starter-task",
+        image: ghchinoyImage("agy-agent"),
+        goal: "Add a subtract(a, b) function to /workspace/app/math_utils.py and a unit test in test_math.py.",
+        cpu: 2,
+        memoryMi: 4096,
+        debug: true,
+        configMode: "custom",
+        customConfig: `maxTurns: 25
+safetyGate: false
+`,
+        env: [{ id: uid(), key: "GEMINI_API_KEY", value: "" }],
+        workspaceMode: "new",
+        wsName: "hero-demo-ws",
+        setupCommands: [
+          "git init /workspace/app",
+          'printf "def add(a, b):\\n    return a + b\\n" > /workspace/app/math_utils.py',
+          'printf "import unittest\\nfrom math_utils import add\\n\\nclass TestMath(unittest.TestCase):\\n    def test_add(self):\\n        self.assertEqual(add(2, 3), 5)\\n" > /workspace/app/test_math.py',
+        ].join("\n"),
+      };
+    case "hero-demo-custom":
+      return {
+        ...d,
+        name: "hero-demo-custom-task",
+        image: "python:3.12-slim",
+        command:
+          "python3 -m unittest discover -s /workspace/app -p 'test_*.py'",
+        cpu: 1,
+        memoryMi: 2048,
+        debug: true,
+        workspaceMode: "existing",
+        existingWorkspace: "hero-demo-ws",
+      };
     case "genkit-apple-container":
       return {
         ...d,
@@ -602,13 +649,12 @@ prompt: |
         ...d,
         name: "agy-dgem-gate",
         image: ghchinoyImage("agy-agent"),
+        goal: "Read the repository, install it with its test dependencies, and run the test suite. Fix any failing or flaky tests you find and write a short report to /workspace/agent-output.md.",
         cpu: 2,
         memoryMi: 4096,
         debug: true,
         configMode: "custom",
-        customConfig:
-          AGENT_PROMPT +
-          `maxTurns: 50
+        customConfig: `maxTurns: 50
 safetyGate: true
 `,
         env: [
