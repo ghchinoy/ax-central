@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and [Common Changelog](https://common-changelog.org/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.2](https://github.com/ghchinoy/ax-central/compare/v0.6.1...v0.6.2) (2026-11-18)
+
+
+### Bug Fixes
+
+* **schema,clusters:** align Goal.text, status.ateTemplate, ax-local context, and ~/.ax/bin with google/ax[#603](https://github.com/ghchinoy/ax-central/issues/603)-[#642](https://github.com/ghchinoy/ax-central/issues/642) ([37988c9](https://github.com/ghchinoy/ax-central/commit/37988c92340bef93fed4747191fa3144a25c695b))
+
 ## [0.6.1] - 2026-11-15
 
 ### Fixed
