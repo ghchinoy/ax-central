@@ -463,20 +463,30 @@ export class Store extends EventTarget {
     const candidateLocalAx = `${repoExpanded}/.ax-local/bin/ax`;
     const candidateTmpAx = `${repoExpanded}/.tmp/bin/ax`;
     const candidateRepoBinAx = `${repoExpanded}/bin/ax`;
+    const candidateHomeAx = `${info.home}/.ax/bin/ax`;
     const candidateClusterBConfig = `${repoExpanded}/.ax-local/ate-local-b.yaml`;
-    const [hasLocalAx, hasTmpAx, hasRepoBinAx, hasClusterBConfig, podmanBin] =
-      await Promise.all([
-        window.studio.fileExists(candidateLocalAx),
-        window.studio.fileExists(candidateTmpAx),
-        window.studio.fileExists(candidateRepoBinAx),
-        window.studio.fileExists(candidateClusterBConfig),
-        window.studio.which("podman"),
-      ]);
+    const [
+      hasLocalAx,
+      hasTmpAx,
+      hasRepoBinAx,
+      hasHomeAx,
+      hasClusterBConfig,
+      podmanBin,
+    ] = await Promise.all([
+      window.studio.fileExists(candidateLocalAx),
+      window.studio.fileExists(candidateTmpAx),
+      window.studio.fileExists(candidateRepoBinAx),
+      window.studio.fileExists(candidateHomeAx),
+      window.studio.fileExists(candidateClusterBConfig),
+      window.studio.which("podman"),
+    ]);
     const repoAxBin = hasTmpAx
       ? candidateTmpAx
       : hasRepoBinAx
         ? candidateRepoBinAx
-        : null;
+        : hasHomeAx
+          ? candidateHomeAx
+          : null;
     this.set({
       localAxBin: hasLocalAx ? candidateLocalAx : null,
       repoAxBin,

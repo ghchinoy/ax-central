@@ -109,7 +109,7 @@ describe("resources & designer models", () => {
     });
 
     const detail = parseTaskYAML(
-      "apiVersion: ax.io/v1alpha1\nkind: Task\nspec:\n  profile:\n    image: repo/img@sha256:abcdef1234567\n    resources:\n      limits:\n        cpu: '2'\n  commands: ['sh', '-c', 'echo hi']\n  goal:\n    spec: 'Fix unit tests'\n  gateway:\n    name: egress-gw\n  workspace:\n    name: demo-ws\n  debug: true\nstatus:\n  state: TASK_STATE_WORKING\n  actorUid: uid-123\n  ateActorTemplate: ax-tmpl-01\n  resolvedArgv: ['sh', '-c', 'echo hi']\n  statusDetail:\n    reason: TASK_STATUS_REASON_PROVISIONING_FAILED\n    detail: image pull failed\n  outcome:\n    result: TASK_RESULT_SUCCEEDED\n    exitCode: 0\n    output: 'all tests passed'\n",
+      "apiVersion: ax.io/v1alpha1\nkind: Task\nspec:\n  profile:\n    image: repo/img@sha256:abcdef1234567\n    resources:\n      limits:\n        cpu: '2'\n  commands: ['sh', '-c', 'echo hi']\n  goal:\n    text: 'Fix unit tests'\n  gateway:\n    name: egress-gw\n  workspace:\n    name: demo-ws\n  debug: true\nstatus:\n  state: TASK_STATE_WORKING\n  actorUid: uid-123\n  ateTemplate:\n    name: ax-tmpl-01\n    atespace: default\n  resolvedArgv: ['sh', '-c', 'echo hi']\n  statusDetail:\n    reason: TASK_STATUS_REASON_PROVISIONING_FAILED\n    detail: image pull failed\n  outcome:\n    result: TASK_RESULT_SUCCEEDED\n    exitCode: 0\n    output: 'all tests passed'\n",
     );
     expect(detail.workspace).toBe("demo-ws");
     expect(detail.command).toEqual(["sh", "-c", "echo hi"]);
@@ -117,6 +117,11 @@ describe("resources & designer models", () => {
     expect(detail.gateway).toBe("egress-gw");
     expect(detail.actorUid).toBe("uid-123");
     expect(detail.ateActorTemplate).toBe("ax-tmpl-01");
+    const legacyDetail = parseTaskYAML(
+      "apiVersion: ax.io/v1alpha1\nkind: Task\nspec:\n  goal:\n    spec: 'Legacy goal'\nstatus:\n  ateActorTemplate: ax-tmpl-legacy\n",
+    );
+    expect(legacyDetail.goal).toBe("Legacy goal");
+    expect(legacyDetail.ateActorTemplate).toBe("ax-tmpl-legacy");
     expect(detail.resolvedArgv).toEqual(["sh", "-c", "echo hi"]);
     expect(detail.statusDetail).toContain("image pull failed");
     expect(detail.outcome).toEqual({
@@ -142,7 +147,7 @@ describe("resources & designer models", () => {
     const yaml = generate(d, true);
     expect(yaml).toContain("kind: Workspace");
     expect(yaml).toContain("kind: Task");
-    expect(yaml).toContain('goal:\n    spec: "Verify all cachetools tests"');
+    expect(yaml).toContain('goal:\n    text: "Verify all cachetools tests"');
     expect(yaml).toContain('gateway:\n    name: "github-egress-gw"');
     expect(yaml).toContain('commands:\n      - "pip install -e . pytest"');
     expect(canApply(d)).toBe(true);
@@ -173,7 +178,7 @@ describe("resources & designer models", () => {
     );
     const agyGatedYaml = generate(agyGated, true);
     expect(agyGatedYaml).toContain("safetyGate: true");
-    expect(agyGatedYaml).toContain("goal:\n    spec:");
+    expect(agyGatedYaml).toContain("goal:\n    text:");
     expect(agyGatedYaml.length).toBeLessThan(16 * 1024);
     expect(
       agyGated.env.filter((kv) => /KEY|TOKEN|SECRET|PASSWORD/i.test(kv.key)),

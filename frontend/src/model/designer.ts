@@ -999,7 +999,7 @@ export function generate(d: Draft, redact = false): string {
   const argv = tokenize(d.command);
   if (argv.length) t += `\n  commands: [${argv.map(q).join(", ")}]`;
   if (d.goal?.trim()) {
-    t += `\n  goal:\n    spec: ${q(d.goal.trim())}`;
+    t += `\n  goal:\n    text: ${q(d.goal.trim())}`;
   }
   if (d.gateway?.trim()) {
     t += `\n  gateway:\n    name: ${q(d.gateway.trim())}`;

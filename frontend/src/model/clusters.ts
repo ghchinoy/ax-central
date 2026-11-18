@@ -155,7 +155,7 @@ export const NAME_RE = /^[a-z0-9]([-a-z0-9]*[a-z0-9])?$/;
 
 const PROBE = `
 name="$1"; ctx="\${2:-kind-$1}"; kc=""
-if [ "\${ctx#kind-}" != "$ctx" ] && command -v kind >/dev/null 2>&1; then
+if { [ "\${ctx#kind-}" != "$ctx" ] || [ "$ctx" = "ax-local" ]; } && command -v kind >/dev/null 2>&1; then
   kc=$(mktemp)
   if ! kind get kubeconfig --name "$name" > "$kc" 2>/dev/null; then
     rm -f "$kc"; kc=""
@@ -615,7 +615,10 @@ export class ClustersStore extends EventTarget {
       const targets: { name: string; context: string; isKind: boolean }[] = [];
       const seenContexts = new Set<string>();
       for (const name of kindNames) {
-        const context = `kind-${name}`;
+        const context =
+          name === "ax-local" && !contexts.has("kind-ax-local")
+            ? "ax-local"
+            : `kind-${name}`;
         seenContexts.add(context);
         targets.push({ name, context, isKind: true });
       }

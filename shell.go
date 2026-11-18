@@ -153,11 +153,13 @@ func buildLoginPath() string {
 	var extra []string
 	if runtime.GOOS == "windows" {
 		extra = []string{
+			filepath.Join(home, ".ax", "bin"),
 			filepath.Join(home, "go", "bin"),
 			filepath.Join(home, "scoop", "shims"),
 		}
 	} else {
 		extra = []string{
+			filepath.Join(home, ".ax", "bin"),
 			filepath.Join(home, "go", "bin"),
 			filepath.Join(home, ".local", "bin"),
 			"/opt/homebrew/bin",

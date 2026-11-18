@@ -311,16 +311,21 @@ export function parseTaskYAML(text: string): TaskDetail {
     debug: !!spec.debug,
     createTime: doc.metadata?.createTime,
     actorUid: status.actorUid,
-    ateActorTemplate: status.ateActorTemplate || profile.ateActorTemplate,
+    ateActorTemplate:
+      status.ateTemplate?.name ||
+      status.ateActorTemplate ||
+      profile.ateActorTemplate,
     resolvedArgv,
     statusDetail,
     outcome,
     goal:
-      typeof spec.goal?.spec === "string"
-        ? spec.goal.spec
-        : typeof spec.goal === "string"
-          ? spec.goal
-          : undefined,
+      typeof spec.goal?.text === "string"
+        ? spec.goal.text
+        : typeof spec.goal?.spec === "string"
+          ? spec.goal.spec
+          : typeof spec.goal === "string"
+            ? spec.goal
+            : undefined,
     gateway: spec.gateway?.name,
     conditions: Array.isArray(status.conditions)
       ? status.conditions.map((c: any) => ({
