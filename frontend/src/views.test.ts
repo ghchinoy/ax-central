@@ -19,7 +19,12 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import "./app";
 import { type AxCentral, renderProseWithBdi } from "./app";
 import { createFallbackStudio } from "./bridge";
-import { clusters } from "./model/clusters";
+import {
+  clusters,
+  evaluateInstallPreflight,
+  imageRefProblem,
+  preflightBlocks,
+} from "./model/clusters";
 import {
   AGENTEXECUTOR_IMAGES,
   DEFAULT_REGISTRIES,
@@ -349,6 +354,77 @@ describe("resources & designer models", () => {
     expect(
       issues(risky).some((i) => i.text.includes("avoid shell wrappers")),
     ).toBe(true);
+  });
+
+  it("evaluates the ax install preflight for existing clusters", () => {
+    const ready = {
+      reachable: "1",
+      server_version: "v1.37.0",
+      pcr: "1",
+      ctb: "1",
+      substrate_ns: "1",
+      substrate_crds: "2",
+      workerpools: "1",
+      ax_install: "1",
+    };
+    const img = "ghcr.io/google/ax/ax-server@sha256:" + "a".repeat(64);
+    const ok = evaluateInstallPreflight(ready, {
+      serverImage: img,
+      isKind: false,
+    });
+    expect(ok.every((c) => c.status === "ok")).toBe(true);
+    expect(preflightBlocks(ok)).toBe(false);
+
+    // An older OrbStack/Colima-style cluster without the pod certificate APIs
+    // and without Substrate must be blocked before install starts.
+    const old = evaluateInstallPreflight(
+      {
+        ...ready,
+        server_version: "v1.33.4+k3s1",
+        pcr: "0",
+        ctb: "0",
+        substrate_ns: "0",
+        substrate_crds: "0",
+      },
+      { serverImage: img, isKind: false },
+    );
+    const byID = Object.fromEntries(old.map((c) => [c.id, c]));
+    expect(byID["k8s-version"].status).toBe("fail");
+    expect(byID["cert-apis"].status).toBe("fail");
+    expect(byID["cert-apis"].detail).toContain("podcertificaterequests");
+    expect(byID.substrate.status).toBe("fail");
+    expect(preflightBlocks(old)).toBe(true);
+
+    const noImage = evaluateInstallPreflight(
+      { ...ready, server_version: "v1.36.1", workerpools: "0" },
+      { serverImage: "", isKind: false },
+    );
+    const noImageByID = Object.fromEntries(noImage.map((c) => [c.id, c]));
+    expect(noImageByID["k8s-version"].status).toBe("warn");
+    expect(noImageByID.workerpool.status).toBe("warn");
+    expect(noImageByID["server-image"].status).toBe("fail");
+
+    const localhostImg = evaluateInstallPreflight(ready, {
+      serverImage: "localhost:5001/ax-server:dev",
+      isKind: false,
+    });
+    expect(localhostImg.find((c) => c.id === "server-image")?.status).toBe(
+      "warn",
+    );
+
+    expect(
+      evaluateInstallPreflight(
+        { reachable: "0" },
+        {
+          serverImage: img,
+          isKind: false,
+        },
+      ),
+    ).toHaveLength(1);
+    expect(preflightBlocks([])).toBe(true);
+    expect(imageRefProblem("ghcr.io/x/y:v1")).toBeNull();
+    expect(imageRefProblem("--context=evil")).not.toBeNull();
+    expect(imageRefProblem("img; rm -rf /")).not.toBeNull();
   });
 
   it("renders identical YAML lines in read-only designer view and raw edit mode", async () => {

@@ -31,6 +31,8 @@ import {
   type Replicas,
   STAGES,
   clusters,
+  imageRefProblem,
+  preflightBlocks,
 } from "../model/clusters";
 import { store } from "../model/store";
 import { sharedStyles } from "../shared-styles";
@@ -100,6 +102,9 @@ export class AxClusters extends LitElement {
   ).get("cluster");
   @state() private outputOpen = false;
   @state() private copiedCmd = "";
+  /** Context whose `ax install` panel is open (non-Kind clusters). */
+  @state() private installFor: string | null = null;
+  @state() private checking = false;
   @query(".console-body") private consoleBody?: HTMLElement;
 
   private stickConsole = true;
@@ -750,6 +755,11 @@ export class AxClusters extends LitElement {
         </div>
 
         ${isSel ? this.renderConnectCommands(cl) : nothing}
+        ${
+          cl.isKind === false && this.installFor === cl.context
+            ? this.renderInstallPanel(cl)
+            : nothing
+        }
 
         <div class="row cluster-actions">
           ${
@@ -768,6 +778,45 @@ export class AxClusters extends LitElement {
                     ${icon("external-link", 12)}
                     ${current ? "Open Activity" : "Open in Central"}
                   </button>
+                `
+              : nothing
+          }
+          ${
+            cl.isKind === false && cl.reachable
+              ? html`
+                  <button
+                    class="btn small ${
+                      this.installFor === cl.context ? "active" : ""
+                    }"
+                    ?disabled=${busy}
+                    title="Check prerequisites and run ax install on ${cl.context}"
+                    @click=${() => this.toggleInstall(cl)}
+                  >
+                    ${icon(cl.ax ? "wrench" : "play", 12)}
+                    ${cl.ax ? "Upgrade AX…" : "Install AX…"}
+                  </button>
+                  ${
+                    cl.ax
+                      ? html`
+                          <button
+                            class="btn small ghost"
+                            ?disabled=${busy}
+                            title="Run ax uninstall on ${cl.context}"
+                            @click=${() => {
+                              if (
+                                confirm(
+                                  `Uninstall AX from ${cl.context}?\n\nax uninstall removes ax-server and revokes its Substrate permissions. The ax-postgres volume is kept.`,
+                                )
+                              ) {
+                                void clusters.axUninstall(cl);
+                              }
+                            }}
+                          >
+                            ${icon("trash", 12)} Uninstall AX
+                          </button>
+                        `
+                      : nothing
+                  }
                 `
               : nothing
           }
@@ -805,6 +854,118 @@ export class AxClusters extends LitElement {
           }
         </div>
         ${mine ? html`<div class="step-progress"></div>` : nothing}
+      </div>
+    `;
+  }
+
+  private toggleInstall(cl: Cluster): void {
+    if (this.installFor === cl.context) {
+      this.installFor = null;
+      return;
+    }
+    this.installFor = cl.context;
+    void this.runPreflight(cl);
+  }
+
+  private async runPreflight(cl: Cluster): Promise<void> {
+    this.checking = true;
+    try {
+      await clusters.preflightInstall(cl);
+    } finally {
+      this.checking = false;
+    }
+  }
+
+  /** `ax install` images, preflight results, and the install action. */
+  private renderInstallPanel(cl: Cluster): TemplateResult {
+    const c = clusters.state;
+    const busy = c.op?.status === "running";
+    const checks = c.preflight[cl.context] ?? [];
+    const img = c.installImages;
+    const srvErr = imageRefProblem(img.serverImage.trim());
+    const runErr = imageRefProblem(img.runnerVolumeImage.trim());
+    const blocked = preflightBlocks(checks) || !!srvErr || !!runErr;
+    return html`
+      <div
+        class="install-panel"
+        role="region"
+        aria-label="Install AX on ${cl.context}"
+      >
+        <div class="caption faint">
+          Runs <code>ax install --context ${cl.context}</code>, which deploys
+          ax-postgres and ax-server onto a cluster that already runs Agent
+          Substrate.
+        </div>
+        <label class="install-field">
+          <span class="caption">ax-server image (required)</span>
+          <input
+            class="input mono ${srvErr ? "invalid" : ""}"
+            placeholder="registry/ax-server@sha256:…"
+            .value=${img.serverImage}
+            ?disabled=${busy}
+            @change=${(e: Event) =>
+              clusters.setInstallImages({
+                serverImage: (e.target as HTMLInputElement).value,
+              })}
+          />
+        </label>
+        <label class="install-field">
+          <span class="caption"
+            >Runner volume image (optional; empty runs each image's own
+            runner)</span
+          >
+          <input
+            class="input mono ${runErr ? "invalid" : ""}"
+            placeholder="registry/ax-runner-volume@sha256:…"
+            .value=${img.runnerVolumeImage}
+            ?disabled=${busy}
+            @change=${(e: Event) =>
+              clusters.setInstallImages({
+                runnerVolumeImage: (e.target as HTMLInputElement).value,
+              })}
+          />
+        </label>
+        <div class="preflight-list" aria-live="polite">
+          ${
+            this.checking
+              ? html`<div class="caption faint">Checking ${cl.context}…</div>`
+              : checks.map((chk) => {
+                  const h = HEALTH[chk.status];
+                  return html`
+                    <div class="preflight-row ${chk.status}">
+                      ${icon(h.iconName, 13, { color: h.color })}
+                      <span class="preflight-title">${chk.title}</span>
+                      <span class="caption selectable">${chk.detail}</span>
+                    </div>
+                  `;
+                })
+          }
+        </div>
+        <div class="row" style="gap:6px;justify-content:flex-end">
+          <button
+            class="btn small"
+            ?disabled=${busy || this.checking}
+            @click=${() => void this.runPreflight(cl)}
+          >
+            ${icon("refresh", 12)} Re-check
+          </button>
+          <button
+            class="btn small primary"
+            ?disabled=${busy || this.checking || blocked}
+            title=${blocked ? "Fix the failing checks first" : ""}
+            @click=${() => {
+              if (
+                confirm(
+                  `Run ax install on ${cl.context}?\n\nThis deploys or upgrades ax-postgres and ax-server in ax-system and grants ax-server access to Agent Substrate.`,
+                )
+              ) {
+                void clusters.axInstall(cl);
+              }
+            }}
+          >
+            ${icon("play", 12)} ${cl.ax ? "Upgrade AX" : "Install AX"}
+          </button>
+        </div>
       </div>
     `;
   }
@@ -986,6 +1147,8 @@ export class AxClusters extends LitElement {
     const verb = {
       create: "Creating",
       install: "Installing AX on",
+      "ax-install": "Installing AX on",
+      "ax-uninstall": "Uninstalling AX from",
       delete: "Deleting",
       kubeconfig: "Adding to kubeconfig:",
       "local-up": "Starting",
@@ -997,6 +1160,8 @@ export class AxClusters extends LitElement {
     const done = {
       create: "Created",
       install: "Installed AX on",
+      "ax-install": "Installed AX on",
+      "ax-uninstall": "Uninstalled AX from",
       delete: "Deleted",
       kubeconfig: "Added to kubeconfig:",
       "local-up": "Started",
@@ -1386,6 +1551,34 @@ export class AxClusters extends LitElement {
       .cluster-actions {
         gap: 6px;
         flex-wrap: wrap;
+      }
+      .install-panel {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        padding: 10px;
+        border-radius: var(--radius-s);
+        background: var(--surface-container);
+      }
+      .install-field {
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+      }
+      .preflight-list {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+      .preflight-row {
+        display: grid;
+        grid-template-columns: 14px max-content 1fr;
+        align-items: start;
+        gap: 6px;
+      }
+      .preflight-title {
+        font-size: 12px;
+        font-weight: 600;
       }
       .new-cluster {
         padding: 14px;

@@ -77,6 +77,25 @@ On machines where `podman` is installed without `docker`, `shell.go` writes the 
 > podman machine stop && podman machine set --memory 8192 && podman machine start
 > ```
 
+### Install AX on an Existing (Non-Kind) Cluster
+
+**Clusters** (`⌘5`) lists every kubeconfig context, including OrbStack, Rancher Desktop, Colima, GKE, and Tailscale clusters. On a reachable non-Kind cluster, **Install AX…** (or **Upgrade AX…** when AX is already there) opens a panel that wraps upstream [`ax install`](https://github.com/google/ax/blob/main/docs/local_installer.md) ([google/ax#603](https://github.com/google/ax/pull/603)):
+
+1. Enter the **ax-server image** (required; development builds of `ax` have no default) and optionally a **runner volume image**. AX Central remembers both.
+2. AX Central runs a read-only preflight against the context (also available as the `preflight_cluster_install` WebMCP tool):
+
+   | Check | Blocks install when |
+   | :--- | :--- |
+   | Kubernetes API | The context is unreachable. |
+   | Kubernetes version | The server is older than 1.36 (1.36 warns; upstream documents 1.37+ for existing clusters). |
+   | Pod certificate APIs | `certificates.k8s.io` doesn't serve `podcertificaterequests` and `clustertrustbundles`. Agent Substrate projects pod certificates and trust bundles, so the `ClusterTrustBundle`, `ClusterTrustBundleProjection`, and `PodCertificateRequest` feature gates must be on. |
+   | Agent Substrate | The `ate-system` namespace or the `workerpools.ate.dev` / `sandboxconfigs.ate.dev` CRDs are missing. `ax install` deploys only AX (`ax-postgres` and `ax-server`), so install Substrate first. |
+   | ax-server image | It is empty or malformed. A `localhost` registry only warns, because only Kind clusters can pull from it. |
+   | `ax install` | The configured `ax` CLI predates `ax install`. |
+
+   A missing WorkerPool only warns: create one from `examples/workerpool.yaml`, or tasks fail to resume with `no free workers available`. No gVisor `RuntimeClass` is needed, because Agent Substrate v1.0 runs gVisor inside its `ateworker-gvisor` WorkerPool pods.
+3. When nothing fails, **Install AX** runs `ax install --context <ctx> --server-image <image> [--runner-volume-image <image>]` and streams its output to the **Output** console. **Uninstall AX** runs `ax uninstall --context <ctx>`, which keeps the `ax-postgres` volume.
+
 ---
 
 ## 4. Configure Paths and Switch Scopes

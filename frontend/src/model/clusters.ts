@@ -110,6 +110,8 @@ export interface Operation {
   kind:
     | "create"
     | "install"
+    | "ax-install"
+    | "ax-uninstall"
     | "delete"
     | "kubeconfig"
     | "local-up"
@@ -131,6 +133,19 @@ export interface NewCluster {
   substrateRef: string;
 }
 
+/** Images for `ax install` on an existing (non-Kind) cluster. */
+export interface InstallImages {
+  serverImage: string;
+  runnerVolumeImage: string;
+}
+
+export interface PreflightCheck {
+  id: string;
+  title: string;
+  status: "ok" | "warn" | "fail";
+  detail: string;
+}
+
 export interface ClustersState {
   ateLocal: AppleContainerStack;
   doctor: PrerequisiteCheck[];
@@ -145,6 +160,9 @@ export interface ClustersState {
   op: Operation | null;
   log: ConsoleLine[];
   form: NewCluster;
+  installImages: InstallImages;
+  /** Latest `ax install` preflight results, keyed by kubeconfig context. */
+  preflight: Record<string, PreflightCheck[]>;
 }
 
 const SCRIPT = "hack/setup-e2e-kind.sh";
@@ -187,6 +205,200 @@ echo "ax=$(k -n ax-system get deploy ax-server -o jsonpath='{.status.readyReplic
 echo "workers=$(k -n ax-system get workerpool ax-workers -o jsonpath='{.status.readyReplicas}/{.spec.replicas}')"
 cleanup_kc
 `;
+
+/**
+ * Read-only checks for `ax install --context <ctx>` on an existing cluster.
+ * $1 is the kubeconfig context and $2 the ax CLI to install with.
+ */
+const PREFLIGHT_INSTALL = `
+ctx="$1"; ax="$2"
+k() { kubectl --context "$ctx" --request-timeout=8s "$@" 2>/dev/null; }
+if ! k get --raw /version >/dev/null; then echo reachable=0; exit 0; fi
+echo reachable=1
+echo "server_version=$(k version -o json | grep -o '"gitVersion": *"[^"]*"' | tail -n1 | sed 's/.*"\\(v[^"]*\\)"/\\1/')"
+certs=$(k api-resources --api-group=certificates.k8s.io -o name)
+printf '%s\\n' "$certs" | grep -q '^podcertificaterequests' && echo pcr=1 || echo pcr=0
+printf '%s\\n' "$certs" | grep -q '^clustertrustbundles' && echo ctb=1 || echo ctb=0
+k get namespace ate-system >/dev/null && echo substrate_ns=1 || echo substrate_ns=0
+crds=0
+for crd in workerpools.ate.dev sandboxconfigs.ate.dev; do k get crd "$crd" >/dev/null && crds=$((crds + 1)); done
+echo "substrate_crds=$crds"
+echo "workerpools=$(k get workerpools.ate.dev -A --no-headers | wc -l | tr -d ' ')"
+"$ax" install --help 2>&1 | grep -q 'ax install \\[flags\\]' && echo ax_install=1 || echo ax_install=0
+`;
+
+/** Minimum Kubernetes minor version Agent Substrate v1.0 runs on. */
+const MIN_K8S_MINOR = 36;
+/** Minimum minor upstream documents for existing clusters (README). */
+const RECOMMENDED_K8S_MINOR = 37;
+
+const IMAGE_REF_RE = /^[a-z0-9][a-z0-9._\-/:]*(@sha256:[0-9a-f]{64})?$/;
+
+/** Returns why ref can't be passed to `ax install`, or null. */
+export function imageRefProblem(ref: string): string | null {
+  if (!ref) return null;
+  return IMAGE_REF_RE.test(ref)
+    ? null
+    : "use a lowercase image reference such as registry/name:tag or registry/name@sha256:…";
+}
+
+/**
+ * Turns PREFLIGHT_INSTALL output into checks. `ax install` deploys only AX
+ * (ax-postgres + ax-server) and registers it with Agent Substrate, so the
+ * cluster must already run Substrate v1.0 on Kubernetes with the
+ * PodCertificateRequest and ClusterTrustBundle APIs. Substrate runs gVisor in
+ * its WorkerPool pods (ateworker-gvisor), so no gVisor RuntimeClass is needed.
+ */
+export function evaluateInstallPreflight(
+  kv: Record<string, string>,
+  opts: { serverImage: string; runnerVolumeImage?: string; isKind: boolean },
+): PreflightCheck[] {
+  const checks: PreflightCheck[] = [];
+  const add = (c: PreflightCheck) => checks.push(c);
+  if (kv.reachable !== "1") {
+    add({
+      id: "reachable",
+      title: "Kubernetes API",
+      status: "fail",
+      detail: "The cluster's API server is not reachable with this context.",
+    });
+    return checks;
+  }
+  add({
+    id: "reachable",
+    title: "Kubernetes API",
+    status: "ok",
+    detail: "Reachable",
+  });
+
+  const version = kv.server_version ?? "";
+  const minor = Number(/^v?1\.(\d+)/.exec(version)?.[1] ?? NaN);
+  add(
+    Number.isNaN(minor)
+      ? {
+          id: "k8s-version",
+          title: "Kubernetes version",
+          status: "warn",
+          detail: "Could not read the server version.",
+        }
+      : minor < MIN_K8S_MINOR
+        ? {
+            id: "k8s-version",
+            title: "Kubernetes version",
+            status: "fail",
+            detail: `${version} is too old: Agent Substrate v1.0 needs Kubernetes 1.${MIN_K8S_MINOR}+ (1.${RECOMMENDED_K8S_MINOR}+ for existing clusters).`,
+          }
+        : minor < RECOMMENDED_K8S_MINOR
+          ? {
+              id: "k8s-version",
+              title: "Kubernetes version",
+              status: "warn",
+              detail: `${version} works for Kind; upstream documents 1.${RECOMMENDED_K8S_MINOR}+ for existing clusters.`,
+            }
+          : {
+              id: "k8s-version",
+              title: "Kubernetes version",
+              status: "ok",
+              detail: version,
+            },
+  );
+
+  const certsOK = kv.pcr === "1" && kv.ctb === "1";
+  add({
+    id: "cert-apis",
+    title: "Pod certificate APIs",
+    status: certsOK ? "ok" : "fail",
+    detail: certsOK
+      ? "PodCertificateRequest and ClusterTrustBundle are served"
+      : `Missing ${[kv.pcr === "1" ? "" : "podcertificaterequests", kv.ctb === "1" ? "" : "clustertrustbundles"].filter(Boolean).join(" and ")} in certificates.k8s.io. Enable the ClusterTrustBundle, ClusterTrustBundleProjection and PodCertificateRequest feature gates and runtime-config certificates.k8s.io/v1beta1=true.`,
+  });
+
+  const substrateOK = kv.substrate_ns === "1" && kv.substrate_crds === "2";
+  add({
+    id: "substrate",
+    title: "Agent Substrate",
+    status: substrateOK ? "ok" : "fail",
+    detail: substrateOK
+      ? "ate-system namespace and ate.dev CRDs are installed"
+      : "Agent Substrate is not installed. ax install deploys only AX, so install Substrate first (or use ax local start for a local Kind cluster).",
+  });
+
+  const pools = Number(kv.workerpools) || 0;
+  add({
+    id: "workerpool",
+    title: "WorkerPool",
+    status: pools > 0 ? "ok" : "warn",
+    detail:
+      pools > 0
+        ? `${pools} WorkerPool${pools === 1 ? "" : "s"}`
+        : "No WorkerPool yet. Create one from examples/workerpool.yaml after installing, or tasks fail to resume with “no free workers available”.",
+  });
+
+  const img = opts.serverImage.trim();
+  const imgProblem = imageRefProblem(img);
+  const runnerProblem = imageRefProblem(opts.runnerVolumeImage?.trim() ?? "");
+  const localhostImage = /^(localhost|127\.0\.0\.1)(:\d+)?\//.test(img);
+  add(
+    !img
+      ? {
+          id: "server-image",
+          title: "ax-server image",
+          status: "fail",
+          detail:
+            "Set the ax-server image (--server-image / AX_SERVER_IMAGE); development builds have no default.",
+        }
+      : imgProblem || runnerProblem
+        ? {
+            id: "server-image",
+            title: "ax-server image",
+            status: "fail",
+            detail: `Invalid image reference: ${imgProblem ?? runnerProblem}`,
+          }
+        : localhostImage && !opts.isKind
+          ? {
+              id: "server-image",
+              title: "ax-server image",
+              status: "warn",
+              detail: `${img} is on a localhost registry, which only Kind clusters created by ax local can pull from.`,
+            }
+          : {
+              id: "server-image",
+              title: "ax-server image",
+              status: "ok",
+              detail: img,
+            },
+  );
+
+  add({
+    id: "ax-cli",
+    title: "ax install",
+    status: kv.ax_install === "1" ? "ok" : "fail",
+    detail:
+      kv.ax_install === "1"
+        ? "This ax CLI supports install and uninstall"
+        : "This ax CLI has no install command (google/ax#603). Rebuild ~/projects/ax or set the ax path in Settings.",
+  });
+  return checks;
+}
+
+export const preflightBlocks = (checks: PreflightCheck[]) =>
+  checks.length === 0 || checks.some((c) => c.status === "fail");
+
+const INSTALL_IMAGES_KEY = "ax-central.install-images";
+
+function loadInstallImages(): InstallImages {
+  try {
+    const raw = JSON.parse(
+      localStorage.getItem(INSTALL_IMAGES_KEY) ?? "{}",
+    ) as Partial<InstallImages>;
+    return {
+      serverImage: String(raw.serverImage ?? ""),
+      runnerVolumeImage: String(raw.runnerVolumeImage ?? ""),
+    };
+  } catch {
+    return { serverImage: "", runnerVolumeImage: "" };
+  }
+}
 
 const PROBE_ATE_LOCAL = `
 pg=0; sub=0; srv=0; subb=0; srvb=0; daemon=0; img=0; podman=0
@@ -288,6 +500,8 @@ export class ClustersStore extends EventTarget {
     op: null,
     log: [],
     form: { name: "", workers: 2, substrateRef: "" },
+    installImages: loadInstallImages(),
+    preflight: {},
   };
 
   private lineID = 1;
@@ -800,6 +1014,88 @@ export class ClustersStore extends EventTarget {
       { kind: "delete", cluster: name },
       `Delete ${name}`,
       `kind delete cluster --name ${shq(name)} && rm -f ${shq(`.tmp/kubeconfig-${name}`)}`,
+    );
+  }
+
+  setInstallImages(patch: Partial<InstallImages>): void {
+    const installImages = { ...this.state.installImages, ...patch };
+    localStorage.setItem(INSTALL_IMAGES_KEY, JSON.stringify(installImages));
+    this.set({ installImages });
+  }
+
+  /** Runs the read-only `ax install` preflight against cl's context. */
+  async preflightInstall(cl: Cluster): Promise<PreflightCheck[]> {
+    ensureStudioBridge();
+    if (!isSafeResourceName(cl.context)) {
+      throw new Error(`Invalid context "${cl.context}".`);
+    }
+    const r = await window.studio.run({
+      program: "/bin/sh",
+      args: [
+        "-c",
+        PREFLIGHT_INSTALL,
+        "preflight-install",
+        cl.context,
+        store.axPathFor(cl.context),
+      ],
+      env: this.env(),
+    });
+    const kv = Object.fromEntries(
+      r.stdout
+        .split("\n")
+        .filter((l) => l.includes("="))
+        .map((l) => [l.slice(0, l.indexOf("=")), l.slice(l.indexOf("=") + 1)]),
+    );
+    const checks = evaluateInstallPreflight(kv, {
+      ...this.state.installImages,
+      isKind: cl.isKind !== false,
+    });
+    this.set({ preflight: { ...this.state.preflight, [cl.context]: checks } });
+    return checks;
+  }
+
+  /**
+   * Installs or upgrades AX on an existing cluster with upstream `ax install`
+   * (google/ax#603) after the preflight passes, streaming its progress.
+   */
+  async axInstall(cl: Cluster): Promise<boolean> {
+    if (this.running) return false;
+    const checks = await this.preflightInstall(cl);
+    if (preflightBlocks(checks)) {
+      this.set({ log: [] });
+      this.append(`✗ Install AX on ${cl.name}: preflight failed`, "fail");
+      for (const c of checks.filter((c) => c.status === "fail")) {
+        this.append(`  ${c.title}: ${c.detail}`);
+      }
+      return false;
+    }
+    const { serverImage, runnerVolumeImage } = this.state.installImages;
+    const args = [
+      "install",
+      "--context",
+      cl.context,
+      "--server-image",
+      serverImage.trim(),
+    ];
+    if (runnerVolumeImage.trim()) {
+      args.push("--runner-volume-image", runnerVolumeImage.trim());
+    }
+    return this.exec(
+      { kind: "ax-install", cluster: cl.name },
+      `Install AX on ${cl.name}`,
+      [store.axPathFor(cl.context), ...args].map(shq).join(" "),
+    );
+  }
+
+  /** Removes AX from cl with `ax uninstall`, keeping ax-postgres PVCs. */
+  async axUninstall(cl: Cluster): Promise<boolean> {
+    if (!isSafeResourceName(cl.context)) return false;
+    return this.exec(
+      { kind: "ax-uninstall", cluster: cl.name },
+      `Uninstall AX from ${cl.name}`,
+      [store.axPathFor(cl.context), "uninstall", "--context", cl.context]
+        .map(shq)
+        .join(" "),
     );
   }
 

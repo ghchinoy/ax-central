@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import type { ClustersStore } from "./model/clusters";
+import { type ClustersStore, preflightBlocks } from "./model/clusters";
 import {
   TEMPLATES,
   canApply,
@@ -105,6 +105,7 @@ export const TOOL_GROUPS: Record<string, string[]> = {
     "remove_image_registry",
     "resolve_image_digest",
     "list_clusters",
+    "preflight_cluster_install",
     "manage_local_stack",
     "run_hero_demo",
     "check_prerequisites",
@@ -836,6 +837,41 @@ export const TOOLS: ToolDef[] = [
           runtime: ctx.clusters.state.runtime?.runtime ?? null,
           problems: ctx.clusters.problems,
           clusters: ctx.clusters.state.clusters,
+        },
+      };
+    },
+  },
+  {
+    name: "preflight_cluster_install",
+    description:
+      "Check whether `ax install` can run on an existing (non-Kind) kubeconfig context: Kubernetes 1.36+ (1.37+ recommended), the PodCertificateRequest and ClusterTrustBundle APIs, an installed Agent Substrate (ate-system and ate.dev CRDs), a WorkerPool, the ax-server image, and an ax CLI with install support. Read-only.",
+    inputSchema: obj(
+      {
+        context: {
+          type: "string",
+          description: "Kubeconfig context to check (from list_clusters).",
+        },
+      },
+      ["context"],
+    ),
+    readOnly: true,
+    async execute(args, ctx) {
+      const context = reqSafeName(args, "context");
+      if (!ctx.clusters.state.loaded) {
+        await ctx.clusters.init();
+      }
+      const cl = ctx.clusters.state.clusters.find((c) => c.context === context);
+      if (!cl) {
+        throw new ToolError(
+          `Unknown context "${context}". Call list_clusters for the available contexts.`,
+        );
+      }
+      const checks = await ctx.clusters.preflightInstall(cl);
+      return {
+        result: {
+          context,
+          can_install: !preflightBlocks(checks),
+          checks,
         },
       };
     },

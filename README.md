@@ -93,7 +93,7 @@ AX Central bridges Lit 3 reactive stores (`store.ts`, `designer.ts`, `clusters.t
 | **Deploy** (`⌘3`) | `<ax-designer>` | Split-pane visual form (`v1alpha1` `spec.profile` & `Workspace.spec.setup`), live Composition Diagram, configurable **Image Artifact Registry Catalog** (`ghcr.io/ghchinoy/ax-images` & `ghcr.io/rakyll/ax-images`) with 1-click **`Resolve @sha256:`** pinning, unified read-only / raw YAML editor with `antigravity-dgem-gate` and `ax-experiments` templates, and STDIO MCP security checks. |
 | **Terminal** (`⌘4`) | `<ax-terminal>`, `<ax-terminal-session>` | Multi-tab interactive `ax ssh` sessions powered by `TerminalBackend` (`script(1)` PTY and `AXS-LINE-MODE` fallback via `ATENET_ROUTER_ADDR` / `atenet-router`) plus single-window launch in native `Ghostty.app`. |
 | **Clusters** (`⌘5`) | `<ax-clusters>` | Dual `ate-local` stack cards (**Cluster A** Apple `container` `:8090` / `:50051` and **Cluster B** Podman `:8091` / `:50052`), Kind cluster provisioning (`hack/setup-e2e-kind.sh` with Podman `docker-shim.sh` and `--metadata-file` support), and the in-app **Prerequisite Doctor** with streaming bootstrap repair. |
-| **WebMCP** (`⌘I`) | `<ax-webmcp-drawer>` | Registers 23 AX tools with `document.modelContext` (and the in-app fallback registry), with live call history, group toggles, and an interactive tool runner. |
+| **WebMCP** (`⌘I`) | `<ax-webmcp-drawer>` | Registers 24 AX tools with `document.modelContext` (and the in-app fallback registry), with live call history, group toggles, and an interactive tool runner. |
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/clusters-dark.webp">
