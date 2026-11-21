@@ -16,6 +16,7 @@
 
 import { parse as parseYAML, stringify as stringifyYAML } from "yaml";
 import { ensureStudioBridge } from "../bridge";
+import { resolveImageDigest } from "./designer";
 import {
   type AXTask,
   type Phase,
@@ -31,14 +32,42 @@ import { store } from "./store";
  * /workspace volume inside the storage backend of the cluster that created it,
  * so a move recreates the task at the destination and streams the workspace
  * across with tar over `ax ssh`. Running processes restart; files survive.
+ * Upstream `ax promote` copies specs only and won't migrate data
+ * (google/ax#694), so this is the way to carry /workspace across clusters.
  */
 
 export interface MoveTarget {
   context: string;
   atespace: string;
-  clearUnpinnedImage?: boolean;
+  /**
+   * Maps a source image reference to the reference to use at the
+   * destination, typically the same image pinned to @sha256:.
+   */
+  pinnedImages?: Record<string, string>;
   overwriteExisting?: boolean;
 }
+
+/** Whether a Kubernetes destination needs image pinned by digest first. */
+export function needsPinning(image: string | undefined, to: MoveTarget) {
+  return (
+    !isLocalContext(to.context) &&
+    typeof image === "string" &&
+    image.length > 0 &&
+    !image.includes("@sha256:")
+  );
+}
+
+/* eslint-disable @typescript-eslint/no-explicit-any */
+/** The profile images (and legacy spec.image) a Task or Workspace names. */
+export function imagesIn(text: string): string[] {
+  const doc: any = parseYAML(text) ?? {};
+  const out: string[] = [];
+  for (const img of [doc.spec?.profile?.image, doc.spec?.image]) {
+    if (typeof img === "string" && img && !out.includes(img)) out.push(img);
+  }
+  return out;
+}
+/* eslint-enable @typescript-eslint/no-explicit-any */
 
 export type StepState = "pending" | "running" | "done" | "failed";
 export interface MoveStep {
@@ -102,25 +131,46 @@ export function portable(text: string, to: MoveTarget): string {
     delete doc.metadata.managedFields;
     doc.metadata.atespace = to.atespace || "default";
   }
-  if (
-    doc.kind === "Task" &&
-    !isLocalContext(to.context) &&
-    (to.clearUnpinnedImage ?? true)
-  ) {
-    if (
-      typeof doc.spec?.profile?.image === "string" &&
-      !doc.spec.profile.image.includes("@sha256:")
-    ) {
-      delete doc.spec.profile.image;
-    }
-    if (
-      typeof doc.spec?.image === "string" &&
-      !doc.spec.image.includes("@sha256:")
-    ) {
-      delete doc.spec.image;
-    }
+  // AX v0.4 has no default task image (google/ax#647), so an image is never
+  // dropped; it is only swapped for its pinned equivalent.
+  const pins = to.pinnedImages ?? {};
+  if (doc.spec?.profile && typeof doc.spec.profile.image === "string") {
+    doc.spec.profile.image =
+      pins[doc.spec.profile.image] ?? doc.spec.profile.image;
+  }
+  if (typeof doc.spec?.image === "string") {
+    doc.spec.image = pins[doc.spec.image] ?? doc.spec.image;
   }
   return stringifyYAML(doc);
+}
+
+/**
+ * Pins every image in texts that a Kubernetes destination would reject,
+ * keeping any pins already in to.pinnedImages. Images are resolved only
+ * against registries the destination can pull from, so a local-only image
+ * (for example ax-agent-local:latest) fails with an actionable error instead
+ * of being pinned to a digest that exists only on this machine.
+ */
+export async function pinImages(
+  texts: string[],
+  to: MoveTarget,
+): Promise<Record<string, string>> {
+  const pins = { ...(to.pinnedImages ?? {}) };
+  for (const text of texts) {
+    for (const img of imagesIn(text)) {
+      if (pins[img] || !needsPinning(img, to)) continue;
+      const res = await resolveImageDigest(img, undefined, {
+        remoteOnly: true,
+      });
+      if (!res.digest) {
+        throw new Error(
+          `${img} has no @sha256: digest and was not found in a registry ${to.context} can pull from. Pick a published image pinned by digest.`,
+        );
+      }
+      pins[img] = res.resolved;
+    }
+  }
+  return pins;
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
@@ -222,7 +272,7 @@ export async function moveTask(
   const target: MoveTarget = {
     context: destContext,
     atespace: destAtespace,
-    clearUnpinnedImage: to.clearUnpinnedImage,
+    pinnedImages: to.pinnedImages,
     overwriteExisting: to.overwriteExisting,
   };
 
@@ -277,7 +327,7 @@ export async function moveTask(
       if (!isSafeWorkspacePath(rawPath)) {
         throw new Error(`Unsafe workspace path "${rawPath}"`);
       }
-      const docs = [portable(stringifyYAML(task), target)];
+      const raws = [stringifyYAML(task)];
       const ws = task.spec.workspace?.name;
       let wsReused = false;
       if (ws) {
@@ -289,16 +339,14 @@ export async function moveTask(
         ) {
           wsReused = true;
         } else {
-          const wsRaw = await mustAt(fromContext, fromAtespace, [
-            "get",
-            "workspace",
-            ws,
-          ]);
-          docs.unshift(portable(wsRaw, target));
+          raws.unshift(
+            await mustAt(fromContext, fromAtespace, ["get", "workspace", ws]),
+          );
         }
       }
+      target.pinnedImages = await pinImages(raws, target);
       return {
-        manifests: docs.join("---\n"),
+        manifests: raws.map((r) => portable(r, target)).join("---\n"),
         path: rawPath,
         reused: wsReused,
       };

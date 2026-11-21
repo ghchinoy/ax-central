@@ -883,7 +883,7 @@ export class AxDesigner extends LitElement {
                 class="input"
                 aria-label="Goal"
                 .value=${d.goal ?? ""}
-                placeholder="Optional natural-language objective (spec.goal.spec)"
+                placeholder="Optional natural-language objective (spec.goal.text)"
                 @input=${(e: Event) =>
                   designer.set({
                     goal: (e.target as HTMLInputElement).value,

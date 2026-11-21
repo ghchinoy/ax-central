@@ -39,10 +39,12 @@ import {
   shortName,
   validateLabel,
 } from "../model/resources";
+import { loadRegistries, resolveImageDigest } from "../model/designer";
 import {
   type MoveStep,
   moveSteps,
   moveTask,
+  needsPinning,
   taskExistsAt,
 } from "../model/move";
 import { type WorkspaceSnapshot, store } from "../model/store";
@@ -1100,11 +1102,16 @@ export class AxMoveTaskModal extends LitElement {
   @state() private deleteOriginal = false;
   @state() private overwriteExisting = false;
   @state() private destExists = false;
-  @state() private clearUnpinnedImage = true;
+  @state() private pinStatus: "idle" | "resolving" | "resolved" | "failed" =
+    "idle";
+  @state() private pinnedRef = "";
+  @state() private imageOverride = "";
   @state() private steps: MoveStep[] | null = null;
   @state() private done = false;
   @state() private initializedFor = "";
   private checkToken = 0;
+  private pinToken = 0;
+  private pinKey = "";
 
   override willUpdate(): void {
     if (this.task && this.initializedFor !== this.task.id) {
@@ -1120,11 +1127,46 @@ export class AxMoveTaskModal extends LitElement {
       this.deleteOriginal = false;
       this.overwriteExisting = false;
       this.destExists = false;
-      this.clearUnpinnedImage = true;
+      this.pinStatus = "idle";
+      this.pinnedRef = "";
+      this.imageOverride = "";
+      this.pinKey = "";
       this.steps = null;
       this.done = false;
       void this.probeDestinationCollision();
     }
+  }
+
+  override updated(): void {
+    const image = this.task ? store.state.details[this.task.id]?.image : "";
+    const key = `${this.context}|${image ?? ""}`;
+    if (this.task && key !== this.pinKey) {
+      this.pinKey = key;
+      void this.probePin(image);
+    }
+  }
+
+  /**
+   * AX v0.4 requires a digest-pinned image on Kubernetes destinations
+   * (google/ax#647), so look up the pin before the move starts.
+   */
+  private async probePin(image: string | undefined): Promise<void> {
+    const token = ++this.pinToken;
+    if (
+      !image ||
+      !needsPinning(image, { context: this.context, atespace: "" })
+    ) {
+      this.pinStatus = "idle";
+      this.pinnedRef = "";
+      return;
+    }
+    this.pinStatus = "resolving";
+    const res = await resolveImageDigest(image, undefined, {
+      remoteOnly: true,
+    });
+    if (token !== this.pinToken) return;
+    this.pinnedRef = res.digest ? res.resolved : "";
+    this.pinStatus = res.digest ? "resolved" : "failed";
   }
 
   private async probeDestinationCollision(): Promise<void> {
@@ -1149,10 +1191,12 @@ export class AxMoveTaskModal extends LitElement {
   }
 
   private async runMove(): Promise<void> {
+    const image = store.state.details[this.task.id]?.image;
+    const pin = this.imageOverride.trim() || this.pinnedRef;
     const target = {
       context: this.context,
       atespace: this.atespace.trim() || "default",
-      clearUnpinnedImage: this.clearUnpinnedImage,
+      pinnedImages: image && pin ? { [image]: pin } : {},
       overwriteExisting: this.overwriteExisting,
     };
     this.steps = moveSteps(target, this.deleteOriginal);
@@ -1164,6 +1208,57 @@ export class AxMoveTaskModal extends LitElement {
         this.steps = [...next];
       },
     );
+  }
+
+  private renderPin(image: string, busy: boolean) {
+    if (this.pinStatus === "resolving" || this.pinStatus === "idle") {
+      return html`<div class="caption faint" style="margin-bottom:8px">
+        Looking up an <code>@sha256:</code> digest for <code>${image}</code>…
+      </div>`;
+    }
+    if (this.pinStatus === "resolved") {
+      return html`<div class="caption" style="margin-bottom:8px">
+        ${icon("circle-check", 13, { color: "var(--green)" })} Pins
+        <code>${image}</code> to
+        <code class="selectable" title=${this.pinnedRef}
+          >${shortImage(this.pinnedRef)}</code
+        >
+        at the destination, which requires a digest-pinned image.
+      </div>`;
+    }
+    const catalog = loadRegistries().flatMap((r) =>
+      r.images
+        .filter((img) => img.digest)
+        .map((img) => `${r.prefix}/${img.name}@${img.digest}`),
+    );
+    return html`
+      <div class="move-warn">
+        ${icon("alert", 15, { color: "var(--orange)" })}
+        <span
+          ><code>${image}</code> isn't in a registry
+          <strong>${shortName(this.context)}</strong> can pull from, and the
+          destination needs an image pinned by digest. Choose a published
+          image.</span
+        >
+      </div>
+      <div class="move-field" style="margin-bottom:8px">
+        <label class="move-label" for="move-image">Destination image</label>
+        <input
+          id="move-image"
+          list="move-image-list"
+          class="input mono"
+          ?disabled=${busy || this.done}
+          .value=${this.imageOverride}
+          placeholder="registry/name@sha256:…"
+          @input=${(e: Event) => {
+            this.imageOverride = (e.target as HTMLInputElement).value;
+          }}
+        />
+        <datalist id="move-image-list">
+          ${catalog.map((ref) => html`<option value=${ref}></option>`)}
+        </datalist>
+      </div>
+    `;
   }
 
   private showMoved(): void {
@@ -1187,9 +1282,14 @@ export class AxMoveTaskModal extends LitElement {
     const samePlace =
       this.context === s.context && trimmedAtes === this.task.atespace;
     const noDebug = detail !== undefined && !detail.debug;
-    const unpinnedToCluster =
-      !isLocalContext(this.context) &&
-      Boolean(detail?.image && !detail.image.includes("@sha256:"));
+    const unpinnedToCluster = needsPinning(detail?.image, {
+      context: this.context,
+      atespace: trimmedAtes,
+    });
+    const override = this.imageOverride.trim();
+    const overrideOK = /^[^\s@]+@sha256:[0-9a-f]{64}$/.test(override);
+    const pinReady =
+      !unpinnedToCluster || overrideOK || this.pinStatus === "resolved";
     const collisionBlocked = this.destExists && !this.overwriteExisting;
     const canStart =
       !busy &&
@@ -1197,7 +1297,8 @@ export class AxMoveTaskModal extends LitElement {
       !atesErr &&
       !samePlace &&
       !noDebug &&
-      !collisionBlocked;
+      !collisionBlocked &&
+      pinReady;
 
     return html`
       <div
@@ -1337,29 +1438,7 @@ export class AxMoveTaskModal extends LitElement {
                   </div>`
                 : nothing
           }
-          ${
-            unpinnedToCluster
-              ? html`
-                  <label class="move-check">
-                    <input
-                      type="checkbox"
-                      ?disabled=${busy || this.done}
-                      .checked=${this.clearUnpinnedImage}
-                      @change=${(e: Event) => {
-                        this.clearUnpinnedImage = (
-                          e.target as HTMLInputElement
-                        ).checked;
-                      }}
-                    />
-                    <span>
-                      Use destination default runner image (recommended:
-                      <code>${detail?.image}</code> has no
-                      <code>@sha256:</code> digest)
-                    </span>
-                  </label>
-                `
-              : nothing
-          }
+          ${unpinnedToCluster ? this.renderPin(detail?.image ?? "", busy) : nothing}
 
           <label class="move-check">
             <input

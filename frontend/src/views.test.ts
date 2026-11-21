@@ -21,16 +21,27 @@ import { type AxCentral, renderProseWithBdi } from "./app";
 import { createFallbackStudio } from "./bridge";
 import { clusters } from "./model/clusters";
 import {
+  AGENTEXECUTOR_IMAGES,
+  DEFAULT_REGISTRIES,
+  PINNED_SHELL_IMAGE,
   canApply,
   designer,
   generate,
   issues,
   parseEnv,
+  parseImageRef,
   template,
   tokenize,
   tokenizeYAML,
 } from "./model/designer";
-import { isSafeWorkspacePath, moveSteps, portable } from "./model/move";
+import {
+  imagesIn,
+  isSafeWorkspacePath,
+  moveSteps,
+  needsPinning,
+  pinImages,
+  portable,
+} from "./model/move";
 import {
   isSafeResourceName,
   parseContexts,
@@ -122,6 +133,11 @@ describe("resources & designer models", () => {
     );
     expect(legacyDetail.goal).toBe("Legacy goal");
     expect(legacyDetail.ateActorTemplate).toBe("ax-tmpl-legacy");
+    // google/ax#593: a task can name an existing Substrate ActorTemplate.
+    const templated = parseTaskYAML(
+      "apiVersion: ax.io/v1alpha1\nkind: Task\nspec:\n  profile:\n    ateTemplate:\n      name: shared-tmpl\n",
+    );
+    expect(templated.ateActorTemplate).toBe("shared-tmpl");
     expect(detail.resolvedArgv).toEqual(["sh", "-c", "echo hi"]);
     expect(detail.statusDetail).toContain("image pull failed");
     expect(detail.outcome).toEqual({
@@ -137,7 +153,7 @@ describe("resources & designer models", () => {
     expect(validateImage("img@sha256:1234")).toBeNull();
   });
 
-  it("generates multi-document YAML and validates drafts", () => {
+  it("generates multi-document YAML and validates drafts", async () => {
     const d = {
       ...template("gemini"),
       goal: "Verify all cachetools tests",
@@ -162,6 +178,22 @@ describe("resources & designer models", () => {
     const ateLocal = template("ate-local");
     expect(ateLocal.image).toBe("debian:12");
     expect(ateLocal.debug).toBe(true);
+
+    // google/ax#647: a task must name an image.
+    const shell = template("simple");
+    expect(shell.image).toBe(PINNED_SHELL_IMAGE);
+    expect(canApply(shell)).toBe(true);
+    const noImage = { ...template("blank"), image: "" };
+    expect(canApply(noImage)).toBe(false);
+    expect(
+      issues(noImage).some(
+        (i) => i.severity === "error" && i.text.startsWith("Image: required"),
+      ),
+    ).toBe(true);
+    expect(
+      DEFAULT_REGISTRIES.find((r) => r.prefix === AGENTEXECUTOR_IMAGES)
+        ?.images[0]?.digest,
+    ).toMatch(/^sha256:[0-9a-f]{64}$/);
 
     const antigravity = template("antigravity");
     expect(antigravity.image).toContain(
@@ -216,12 +248,58 @@ describe("resources & designer models", () => {
 
     const movedCluster = portable(
       'apiVersion: ax.io/v1alpha1\nkind: Task\nmetadata:\n  name: t1\n  atespace: default\n  createTime: "2026-11-01T00:00:00Z"\nspec:\n  image: debian:12\n  debug: true\nstatus:\n  phase: Running\n',
-      { context: "kind-ax", atespace: "staging" },
+      {
+        context: "kind-ax",
+        atespace: "staging",
+        pinnedImages: { "debian:12": "debian@sha256:268fb24c" },
+      },
     );
     expect(movedCluster).toContain("atespace: staging");
     expect(movedCluster).not.toContain("createTime");
     expect(movedCluster).not.toContain("status:");
-    expect(movedCluster).not.toContain("debian:12");
+    expect(movedCluster).toContain("image: debian@sha256:268fb24c");
+
+    // google/ax#647: AX v0.4 has no default task image, so an unpinned image
+    // is never dropped from the manifest.
+    const keptCluster = portable(
+      "apiVersion: ax.io/v1alpha1\nkind: Task\nmetadata:\n  name: t1\nspec:\n  profile:\n    image: python:3.12-slim\n  debug: true\n",
+      { context: "kind-ax", atespace: "default" },
+    );
+    expect(keptCluster).toContain("image: python:3.12-slim");
+    expect(
+      imagesIn(
+        "kind: Task\nspec:\n  profile:\n    image: python:3.12-slim\n  image: debian:12\n",
+      ),
+    ).toEqual(["python:3.12-slim", "debian:12"]);
+    const toKind = { context: "kind-ax", atespace: "default" };
+    expect(needsPinning("python:3.12-slim", toKind)).toBe(true);
+    expect(needsPinning("img@sha256:abc", toKind)).toBe(false);
+    expect(
+      needsPinning("debian:12", { context: "local", atespace: "default" }),
+    ).toBe(false);
+    // A caller-supplied pin is used as-is without a registry lookup.
+    expect(
+      await pinImages(["kind: Task\nspec:\n  profile:\n    image: app:dev\n"], {
+        ...toKind,
+        pinnedImages: { "app:dev": "ghcr.io/me/app@sha256:feed" },
+      }),
+    ).toEqual({ "app:dev": "ghcr.io/me/app@sha256:feed" });
+
+    expect(parseImageRef("python:3.12-slim")).toEqual({
+      host: "docker.io",
+      path: "library/python",
+      tag: "3.12-slim",
+    });
+    expect(parseImageRef("ghcr.io/agentexecutor/antigravity")).toEqual({
+      host: "ghcr.io",
+      path: "agentexecutor/antigravity",
+      tag: "latest",
+    });
+    expect(parseImageRef("localhost:5001/ax-runner:dev")).toEqual({
+      host: "localhost:5001",
+      path: "ax-runner",
+      tag: "dev",
+    });
 
     const movedLocal = portable(
       "apiVersion: ax.io/v1alpha1\nkind: Task\nmetadata:\n  name: t1\nspec:\n  image: debian:12\n  debug: true\n",

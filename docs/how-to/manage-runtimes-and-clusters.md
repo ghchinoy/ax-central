@@ -33,7 +33,7 @@ You can also target individual components with `hack/doctor.sh --install <target
 | `wails` | Installs the latest Wails CLI (`go install github.com/wailsapp/wails/v2/cmd/wails@latest`) and, on Linux/Crostini, `libgtk-3-dev` + `libwebkit2gtk-4.1-dev`. |
 | `container-daemon` | Runs `container system start` to boot the macOS Apple `container` service. |
 | `ax-repo` | Clones `ghchinoy/ax` (or fetches branch `feat/ate-local-apple-container` into `~/projects/ax`) so `cmd/ate-local` and `examples/ate_local/local-stack.sh` are present. |
-| `ate-local-bins` | Compiles `.ax-local/bin/{ax,ate-local,ax-server}` and cross-compiles `.ax-local/bin/linux_arm64/ax-task-runner`. |
+| `ate-local-bins` | Compiles `.ax-local/bin/{ax,ate-local,ax-server}` and cross-compiles `.ax-local/bin/linux_arm64/ax-runner` (`cmd/ax-runner`, renamed from `ax-task-runner` in [google/ax#677](https://github.com/google/ax/pull/677)), hard-linking `ax-task-runner` to it for older images. |
 | `ax-experiments` | Clones `ghchinoy/ax-experiments` into `~/projects/ax-experiments`. |
 | `agent-image` | Builds `ax-agent-local:latest` (`linux/arm64`) via `container build` from `~/projects/ax-experiments/swarm/agent-image`. |
 | `all` | Runs each of the targets above that is not yet satisfied. |

@@ -108,15 +108,18 @@ install_target() {
       fi
       ;;
     ate-local-bins)
-      echo "==> Building ate-local, ax-server, ax, and linux/arm64 ax-task-runner in $AX_REPO..."
+      echo "==> Building ate-local, ax-server, ax, and linux/arm64 ax-runner in $AX_REPO..."
       (
         cd "$AX_REPO"
         mkdir -p .ax-local/bin/linux_arm64
         go build -o .ax-local/bin/ate-local ./cmd/ate-local
         go build -o .ax-local/bin/ax-server ./cmd/ax-server
         go build -o .ax-local/bin/ax ./cmd/ax
+        # google/ax#677 renamed cmd/ax-task-runner to cmd/ax-runner. Keep a
+        # hard-linked alias for images that still reference ax-task-runner.
         GOOS=linux GOARCH=arm64 CGO_ENABLED=0 \
-          go build -trimpath -ldflags="-s -w" -o .ax-local/bin/linux_arm64/ax-task-runner ./cmd/ax-task-runner
+          go build -trimpath -ldflags="-s -w" -o .ax-local/bin/linux_arm64/ax-runner ./cmd/ax-runner
+        ln -f .ax-local/bin/linux_arm64/ax-runner .ax-local/bin/linux_arm64/ax-task-runner
       )
       ;;
     ax-experiments)
@@ -141,7 +144,7 @@ install_target() {
       if [[ ! -f "$AX_REPO/examples/ate_local/local-stack.sh" ]]; then
         install_target ax-repo
       fi
-      if [[ -f "$AX_REPO/examples/ate_local/local-stack.sh" && ! -x "$AX_REPO/.ax-local/bin/linux_arm64/ax-task-runner" ]]; then
+      if [[ -f "$AX_REPO/examples/ate_local/local-stack.sh" && ! -x "$AX_REPO/.ax-local/bin/linux_arm64/ax-runner" ]]; then
         install_target ate-local-bins
       fi
       if [[ ! -d "$AX_EXPERIMENTS_REPO/swarm" ]]; then
@@ -238,7 +241,7 @@ else
 fi
 
 # 4. Built ate-local / Kind binaries
-if [[ -x "$AX_REPO/.ax-local/bin/ax" && -x "$AX_REPO/.ax-local/bin/ate-local" && -x "$AX_REPO/.ax-local/bin/ax-server" && -x "$AX_REPO/.ax-local/bin/linux_arm64/ax-task-runner" ]]; then
+if [[ -x "$AX_REPO/.ax-local/bin/ax" && -x "$AX_REPO/.ax-local/bin/ate-local" && -x "$AX_REPO/.ax-local/bin/ax-server" && -x "$AX_REPO/.ax-local/bin/linux_arm64/ax-runner" ]]; then
   append_check "ate-local-bins" "ate-local" "ate-local & arm64 task runner" "ok" "${AX_REPO}/.ax-local/bin ready" ""
 elif [[ "$OS_NAME" == "Linux" && ( -x "$AX_REPO/.tmp/bin/ax" || -x "$AX_REPO/bin/ax" ) ]]; then
   append_check "ate-local-bins" "ate-local" "ax CLI & task runner" "ok" "${AX_REPO}/.tmp/bin/ax (or bin/ax) ready" ""

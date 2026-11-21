@@ -55,7 +55,9 @@ Developers prototyping AX tasks face four operational gaps today:
 
 *   **Given**: Task `local-task-01` runs on `local` with `spec.image: "debian:12"` (an un-digested tag that Kubernetes Agent Substrate rejects).
 *   **When**: The user opens **Move** on `local-task-01` and selects destination context `kind-ax-e2e`.
-*   **Then**: The modal detects that `debian:12` is not pinned by `@sha256:` and enables **Use destination default runner image** (`clearUnpinnedImage: true` by default when moving to a non-`local` context). On **Move**, `portable()` omits `spec.image` on the destination manifest so `kind-ax-e2e` provisions the task using its configured `AX_DEFAULT_TASK_IMAGE`, pipes `/workspace` over `ax ssh` from `.ax-local/bin/ax --server localhost:8090` to `.tmp/bin/ax --context kind-ax-e2e` (with `KUBECONFIG=.tmp/kubeconfig-ax-e2e`), and restarts the destination task.
+*   **Then**: The modal detects that `debian:12` is not pinned by `@sha256:` and looks up its digest in a registry `kind-ax-e2e` can pull from (Docker Hub here), showing **Pins `debian:12` to `debian@sha256:…`**. On **Move**, `portable()` swaps the image for that pinned reference on the destination manifest, pipes `/workspace` over `ax ssh` from `.ax-local/bin/ax --server localhost:8090` to `.tmp/bin/ax --context kind-ax-e2e` (with `KUBECONFIG=.tmp/kubeconfig-ax-e2e`), and restarts the destination task. If the image exists only on this machine (for example `ax-agent-local:latest`), the modal asks for a published, digest-pinned image instead.
+
+> **2026-11 update (AX v0.4):** Earlier versions dropped the unpinned image so the destination fell back to `AX_DEFAULT_TASK_IMAGE`. [google/ax#647](https://github.com/google/ax/pull/647) removed that default, so `CreateTask` now rejects a Task without an image, and a move pins the image instead. [google/ax#694](https://github.com/google/ax/issues/694) confirmed upstream `ax promote` copies specs only and won't migrate snapshots or data, so Move Task stays AX Central's way to carry `/workspace` across clusters.
 
 ## Technical Plan (Architecture)
 
@@ -76,8 +78,8 @@ Developers prototyping AX tasks face four operational gaps today:
     *   `PipeRequest` supports optional `FromProgram`, `FromEnv`, `ToProgram`, and `ToEnv` overrides (falling back to `Program` when unset).
     *   In `shell.go`, `Pipe` creates `pr, pw, err := os.Pipe()`, starts `fromCmd` and immediately closes the parent's `pw` copy, then starts `toCmd` (killing and reaping `fromCmd` if `toCmd.Start()` fails) and immediately closes the parent's `pr` copy.
     *   Only after both commands have started does `Pipe` spawn the `fromCmd.Wait()` goroutine (preventing any data race on `toCmd.Process` under `go test -race`). If `fromCmd` exits non-zero, the goroutine kills `toCmd.Process`; if `toCmd.Wait()` returns non-zero first, the parent kills `fromCmd.Process` before reading `<-fromDone`.
-2.  **Cross-Substrate Image Normalization in `portable()` (`move.ts`)**:
-    *   When moving a task to `to.context !== "local"` and `doc.spec?.image` does not contain `"@sha256:"`, if `to.clearUnpinnedImage ?? true` is true, `portable()` deletes `doc.spec.image` so the destination cluster uses its `AX_DEFAULT_TASK_IMAGE` instead of failing with `TemplateCreationFailed`.
+2.  **Cross-Substrate Image Pinning in `portable()` and `pinImages()` (`move.ts`)**:
+    *   When moving to a non-local context, `pinImages()` resolves every unpinned `spec.profile.image` (and legacy `spec.image`) on the Task and Workspace with `resolveImageDigest(img, registries, { remoteOnly: true })`, which checks the registry catalog, then queries the image's registry (Docker Hub, `ghcr.io`, a `localhost` registry, or any OCI registry). Local image stores are skipped so a local-only image is never pinned to a digest the destination can't pull. `portable()` then swaps each image for its pinned reference and never drops it, because AX v0.4 has no default task image (google/ax#647).
 3.  **Single-Pass `stdin` Permission Safety for `tar`**:
     *   Never chain `tar xf - || tar xf -` over a non-seekable `stdin` pipe (if the first `tar` consumes any bytes before failing, the second `tar` reads a corrupted stream). Instead, Step 4 runs `sh -c 'chmod -R u+w "$1" 2>/dev/null || true; exec tar xf - -C "$1"' sh <path>` on the destination so read-only `.git/objects/pack/*.idx` files are made writable before `tar xf -` reads `stdin`.
 
@@ -306,7 +308,7 @@ Developers prototyping AX tasks face four operational gaps today:
             4. `` `Copy ${path}` ``
             5. `"Restart the new copy on the copied files"`
             6. `deleteOriginal ? "Delete the original" : "Suspend the original"`
-        *   `portable(text: string, to: MoveTarget): string` parses YAML, deletes `doc.status`, deletes `doc.metadata.{createTime,uid,resourceVersion,generation,managedFields}`, sets `doc.metadata.atespace = to.atespace || "default"`, and if `doc.kind === "Task" && to.context !== "local" && (to.clearUnpinnedImage ?? true) && typeof doc.spec?.image === "string" && !doc.spec.image.includes("@sha256:")`, deletes `doc.spec.image`.
+        *   `portable(text: string, to: MoveTarget): string` parses YAML, deletes `doc.status`, deletes `doc.metadata.{createTime,uid,resourceVersion,generation,managedFields}`, sets `doc.metadata.atespace = to.atespace || "default"`, and replaces `doc.spec.profile.image` (and legacy `doc.spec.image`) with `to.pinnedImages[image]` when present, keeping the image otherwise.
         *   Step 4 invokes `window.studio.pipe` with:
             *   `fromProgram: store.axPathFor(fromContext)`, `fromEnv: store.envFor(fromContext)`, `from: [...fromScope, "ssh", t.name, "--", "tar", "cf", "-", "-C", path, "."]`
             *   `toProgram: store.axPathFor(to.context)`, `toEnv: store.envFor(to.context)`, `to: [...destScope, "ssh", t.name, "--", "sh", "-c", 'chmod -R u+w "$1" 2>/dev/null || true; exec tar xf - -C "$1"', "sh", path]`

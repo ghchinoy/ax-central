@@ -206,6 +206,20 @@ function blank(): Draft {
   };
 }
 
+/** Official pure agent images (github.com/agentexecutor/images, google/ax#662). */
+export const AGENTEXECUTOR_IMAGES = "ghcr.io/agentexecutor";
+export const AGENTEXECUTOR_IMAGE_DIGESTS = {
+  antigravity:
+    "sha256:0ccd91d03f996c375d6d391dc20106102187f15210a0016212b6721cd8044078",
+};
+
+/**
+ * A digest-pinned public base image for templates without an agent image.
+ * AX v0.4 has no default task image (google/ax#647).
+ */
+export const PINNED_SHELL_IMAGE =
+  "debian:bookworm-slim@sha256:734a72b3d6142a71993b4bc580ca01d8ca687f77a2c422d96a961d3376b179bc";
+
 const AX_IMAGES = "ghcr.io/rakyll/ax-images";
 const IMAGE_DIGESTS = {
   antigravity:
@@ -225,6 +239,21 @@ const ghchinoyImage = (name: keyof typeof GHCHINOY_IMAGE_DIGESTS) =>
   `${GHCHINOY_AX_IMAGES}/${name}@${GHCHINOY_IMAGE_DIGESTS[name]}`;
 
 export const DEFAULT_REGISTRIES: ImageRegistry[] = [
+  {
+    id: "agentexecutor-images",
+    title: "Official AX Agent Images (agentexecutor/images)",
+    prefix: AGENTEXECUTOR_IMAGES,
+    repoUrl: "https://github.com/agentexecutor/images",
+    builtIn: true,
+    images: [
+      {
+        name: "antigravity",
+        digest: AGENTEXECUTOR_IMAGE_DIGESTS.antigravity,
+        description:
+          "Pure Antigravity (agy) image with the ax-harness launcher; no AX runner baked in",
+      },
+    ],
+  },
   {
     id: "ghchinoy-ax-images",
     title: "AX Experiments & DGEM (ghchinoy/ax-images)",
@@ -320,9 +349,47 @@ export function loadRegistries(): ImageRegistry[] {
   }
 }
 
+/**
+ * Splits an image reference into registry host, repository path, and tag,
+ * applying Docker Hub defaults (docker.io, library/<name>, latest).
+ */
+export function parseImageRef(ref: string): {
+  host: string;
+  path: string;
+  tag: string;
+} {
+  let rest = ref.trim().split("@")[0];
+  let tag = "latest";
+  const m = rest.match(/^(.*):([^/:]+)$/);
+  if (m) {
+    rest = m[1];
+    tag = m[2];
+  }
+  const slash = rest.indexOf("/");
+  const first = slash > 0 ? rest.slice(0, slash) : "";
+  if (
+    first &&
+    (first.includes(".") || first.includes(":") || first === "localhost")
+  ) {
+    return { host: first, path: rest.slice(slash + 1), tag };
+  }
+  return {
+    host: "docker.io",
+    path: rest.includes("/") ? rest : `library/${rest}`,
+    tag,
+  };
+}
+
+/**
+ * Pins imageRef to an @sha256: digest, first from the registry catalog and
+ * then by querying a registry. With remoteOnly, local image stores (Apple
+ * container, podman) are skipped unless the image lives on a localhost
+ * registry, so a digest is only returned when another cluster can pull it.
+ */
 export async function resolveImageDigest(
   imageRef: string,
   registries: ImageRegistry[] = loadRegistries(),
+  opts: { remoteOnly?: boolean } = {},
 ): Promise<{ resolved: string; digest: string | null; error?: string }> {
   const trimmed = imageRef.trim();
   if (!trimmed) {
@@ -347,36 +414,55 @@ export async function resolveImageDigest(
   }
 
   ensureStudioBridge();
+  const { host, path, tag } = parseImageRef(trimmed);
   const r = await window.studio.run({
     program: "/bin/sh",
     args: [
       "-c",
       [
-        'ref="$1"',
-        'base="${ref%%:*}"',
-        "if command -v podman >/dev/null 2>&1; then",
-        '  dig=$(podman manifest inspect "$ref" 2>/dev/null | grep -Eo "sha256:[0-9a-f]{64}" | head -n1 || true)',
-        '  [ -n "$dig" ] && { printf "%s\\n" "$dig"; exit 0; }',
+        'ref="$1"; host="$2"; path="$3"; tag="$4"; remote_only="$5"',
+        'accept="Accept: application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json"',
+        'head_digest() { awk \'tolower($1)=="docker-content-digest:" {gsub("\\r",""); print $2; exit}\'; }',
+        'token_of() { sed -n \'s/.*"token":"\\([^"]*\\)".*/\\1/p\'; }',
+        "local_ok=1",
+        '[ "$remote_only" = 1 ] && local_ok=0',
+        'case "$host" in localhost|localhost:*|127.0.0.1|127.0.0.1:*) local_ok=1 ;; esac',
+        'if [ "$local_ok" = 1 ]; then',
+        "  if command -v podman >/dev/null 2>&1; then",
+        '    dig=$(podman manifest inspect "$ref" 2>/dev/null | grep -Eo "sha256:[0-9a-f]{64}" | head -n1 || true)',
+        '    [ -n "$dig" ] && { printf "%s\\n" "$dig"; exit 0; }',
+        "  fi",
+        "  if command -v container >/dev/null 2>&1; then",
+        '    dig=$(container image inspect "$ref" 2>/dev/null | grep -Eo "sha256:[0-9a-f]{64}" | head -n1 || true)',
+        '    [ -n "$dig" ] && { printf "%s\\n" "$dig"; exit 0; }',
+        "  fi",
         "fi",
-        "if command -v container >/dev/null 2>&1; then",
-        '  dig=$(container image inspect "$ref" 2>/dev/null | grep -Eo "sha256:[0-9a-f]{64}" | head -n1 || true)',
-        '  [ -n "$dig" ] && { printf "%s\\n" "$dig"; exit 0; }',
-        "fi",
-        'case "$ref" in',
-        "  ghcr.io/*)",
-        '    path="${base#ghcr.io/}"',
-        '    tag="${ref#${base}}"; tag="${tag#:}"; [ -z "$tag" ] && tag="latest"',
-        '    tok=$(curl -fsSL "https://ghcr.io/token?scope=repository:${path}:pull" 2>/dev/null | sed -n \'s/.*"token":"\\([^"]*\\)".*/\\1/p\')',
-        '    if [ -n "$tok" ]; then',
-        '      dig=$(curl -fsSI -H "Authorization: Bearer $tok" -H "Accept: application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.oci.image.manifest.v1+json" "https://ghcr.io/v2/${path}/manifests/${tag}" 2>/dev/null | awk \'tolower($1)=="docker-content-digest:" {gsub("\\r",""); print $2; exit}\')',
-        '      [ -n "$dig" ] && { printf "%s\\n" "$dig"; exit 0; }',
-        "    fi",
+        'dig=""',
+        'case "$host" in',
+        "  ghcr.io)",
+        '    tok=$(curl -fsSL "https://ghcr.io/token?scope=repository:${path}:pull" 2>/dev/null | token_of)',
+        '    [ -n "$tok" ] && dig=$(curl -fsSI -H "Authorization: Bearer $tok" -H "$accept" "https://ghcr.io/v2/${path}/manifests/${tag}" 2>/dev/null | head_digest)',
+        "    ;;",
+        "  docker.io)",
+        '    tok=$(curl -fsSL "https://auth.docker.io/token?service=registry.docker.io&scope=repository:${path}:pull" 2>/dev/null | token_of)',
+        '    [ -n "$tok" ] && dig=$(curl -fsSI -H "Authorization: Bearer $tok" -H "$accept" "https://registry-1.docker.io/v2/${path}/manifests/${tag}" 2>/dev/null | head_digest)',
+        "    ;;",
+        "  localhost|localhost:*|127.0.0.1|127.0.0.1:*)",
+        '    dig=$(curl -fsSI -H "$accept" "http://${host}/v2/${path}/manifests/${tag}" 2>/dev/null | head_digest)',
+        "    ;;",
+        "  *)",
+        '    dig=$(curl -fsSI -H "$accept" "https://${host}/v2/${path}/manifests/${tag}" 2>/dev/null | head_digest)',
         "    ;;",
         "esac",
+        '[ -n "$dig" ] && { printf "%s\\n" "$dig"; exit 0; }',
         "exit 1",
       ].join("\n"),
       "resolve-digest",
       trimmed,
+      host,
+      path,
+      tag,
+      opts.remoteOnly ? "1" : "0",
     ],
   });
   const dig = r.stdout.trim();
@@ -451,6 +537,7 @@ function templateDraft(t: Template): Draft {
       return {
         ...d,
         name: "shell-task",
+        image: PINNED_SHELL_IMAGE,
         command: "sh -c 'echo $ENVIRONMENT'",
         env: [{ id: uid(), key: "ENVIRONMENT", value: "test" }],
       };
@@ -820,7 +907,11 @@ export function issues(d: Draft): Issue[] {
   let e: string | null;
   if ((e = validateLabel(d.name))) err(`Task name: ${e}`);
   if (d.atespace && (e = validateLabel(d.atespace))) err(`Atespace: ${e}`);
-  if ((e = validateImage(d.image))) warn(`Image: ${e}`);
+  if (!d.image.trim()) {
+    err("Image: required (AX v0.4 has no default task image, google/ax#647)");
+  } else if ((e = validateImage(d.image))) {
+    warn(`Image: ${e}`);
+  }
   if (d.image.includes("REPLACE_WITH"))
     err("Image: replace the placeholder digest");
   if (d.workspaceMode === "new" && (e = validateLabel(d.wsName)))

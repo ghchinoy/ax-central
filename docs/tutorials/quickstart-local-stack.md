@@ -29,7 +29,7 @@ On an Apple Silicon Mac configured for the local stack, `hack/doctor.sh` reports
   [✓] ax-experiments & agent image     /Users/you/projects/ax-experiments + ax-agent-local:latest
 ```
 
-If any check reports a warning, run `make bootstrap` to clone the required branches and build `.ax-local/bin/{ax,ate-local,ax-server}` and `.ax-local/bin/linux_arm64/ax-task-runner`.
+If any check reports a warning, run `make bootstrap` to clone the required branches and build `.ax-local/bin/{ax,ate-local,ax-server}` and `.ax-local/bin/linux_arm64/ax-runner` (with an `ax-task-runner` hard link for older images).
 
 You can verify the headless stack from your terminal at any time with:
 
@@ -197,7 +197,7 @@ When you run AX Central on a Chromebook Linux VM (Crostini / Bagels KVM with Deb
 
 1. Press **`Ctrl+3`** to open **Deploy**.
 2. Open **Templates** and select **`Shell`** (`simple`):
-   * Leave **Image** blank so `ax-server` schedules the cluster's local default runner image (`localhost:5001/ax-task-runner`, which includes the guest HTTP/exec server and metadata proxy).
+   * Keep the template's digest-pinned **Image** (`debian:bookworm-slim@sha256:…`). AX v0.4 has no default task image ([google/ax#647](https://github.com/google/ax/pull/647)), so every task names one, and `ax-server` mounts its `ax-runner` (the guest HTTP/exec server and metadata proxy) into it.
    * Leave **Command** blank (or enter a custom command) and keep **Debug** toggled **on** (`spec.debug: true`).
    * Under **Workspace**, select **New**, name it `crostini-ws`, and click **Add file** to create `AGENTS.md` with sample instructions.
 3. Click **Create** (`Ctrl+Enter`). Once created, click **Resume & Open in Activity** in the top-right header.

@@ -314,6 +314,7 @@ export function parseTaskYAML(text: string): TaskDetail {
     ateActorTemplate:
       status.ateTemplate?.name ||
       status.ateActorTemplate ||
+      profile.ateTemplate?.name ||
       profile.ateActorTemplate,
     resolvedArgv,
     statusDetail,

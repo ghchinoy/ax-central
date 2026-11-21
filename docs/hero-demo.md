@@ -89,7 +89,7 @@ Or press **`⌘I`** (**WebMCP Inspector**) inside `AX Central.app` and execute *
   > _"Step 1 verifies our dual-cluster local substrate, both speaking unmodified Agent Substrate v1.0 Control gRPC plus an embedded HTTP/2 `atenet-router`, with zero changes to core AX packages: Cluster A on macOS's native Apple Container hypervisor on port 8090, and Cluster B on rootless Podman on port 8091._
   > _Step 2 applies `hero-demo-ws`, runs its setup commands once to initialize a Python repository, and mints an immutable warm snapshot `Tag` so future sandboxes skip maiden git setup._
   > _Step 3 boots our digest-pinned Genkit coding agent against that workspace. Turn 1 writes a new `subtract` function and unit test; AX then suspends the task to zero CPU and RAM, cold-boots a fresh microVM on resume, and sends Turn 2 on the same session ID, recalling Turn 1 from its persisted workspace snapshot._
-  > _Step 4 runs upstream's unmodified `python:3.12-slim` image, with no custom Dockerfile and no `git` binary installed, injecting `ax-task-runner` automatically and passing both unit tests._
+  > _Step 4 runs upstream's unmodified `python:3.12-slim` image, with no custom Dockerfile and no `git` binary installed, injecting `ax-runner` automatically and passing both unit tests._
   > _And Step 5 promotes those exact same manifests unchanged to Cluster B on Podman: five out of five green."_
 
 ### Beat 2: Inspect Warm Snapshots & Post-Mortem Archives (`0:55 – 1:20`, press `⌘1` Activity)
@@ -117,7 +117,7 @@ Or press **`⌘I`** (**WebMCP Inspector**) inside `AX Central.app` and execute *
   2. Click **`Move` (`⇄`)** on `hero-demo-starter-task` to show the **`Current cluster -> Destination cluster`** banner (`local :8090` $\rightarrow$ `local-podman :8091`): either execute the ~5–8s live transfer or close the modal and switch the top **Context** picker to **`local-podman`** (showing `hero-demo-custom-task` running on Cluster B) and back to **`local`**.
   3. Press **`⌘2`** (**Map**) to scrub the bottom **Session DVR** slider, and press **`⌘I`** to show the **23 WebMCP tools**.
 - **Voiceover**:
-  > _"Selecting `hero-demo-custom-task`, the Guest logs show two key proofs: first, `ate-local` injected `ax-task-runner` and hydrated the warm snapshot **before** PID 1 booted, so stock `python:3.12-slim` (which doesn't even have `git` installed) skipped maiden setup cleanly. Second, it ran **two** unit tests: `add` from Step 2's workspace setup plus `subtract` written by our Gemini agent in Step 3._
+  > _"Selecting `hero-demo-custom-task`, the Guest logs show two key proofs: first, `ate-local` injected `ax-runner` and hydrated the warm snapshot **before** PID 1 booted, so stock `python:3.12-slim` (which doesn't even have `git` installed) skipped maiden setup cleanly. Second, it ran **two** unit tests: `add` from Step 2's workspace setup plus `subtract` written by our Gemini agent in Step 3._
   > _For multi-cluster mobility, we support both patterns: Step 5 promoted unchanged manifests onto Podman via the shared snapshot store, just like two GKE clusters sharing a GCS snapshot bucket, while clicking **Move** streams `/workspace` sandbox-to-sandbox over `ax ssh` through `atenet-router` even when clusters share zero storage._
   > _In Map view, the Session DVR timeline replays every workspace mount and task wakeup, and every button we clicked wraps headless CLI commands and is exposed across 23 WebMCP tools so terminal workflows and AI agents get the exact same capabilities."_
 
@@ -162,7 +162,7 @@ Or press **`⌘I`** (**WebMCP Inspector**) inside `AX Central.app` and execute *
   - In **Deploy (`⌘3`)**, select **`v0.1 Hero Demo: Custom Python Unittest`** to inspect the manifest.
   - In **Activity (`⌘1`)**, click `hero-demo-custom-task`:
     - **Outcome** section shows `TASK_RESULT_SUCCEEDED` (`exit 0`).
-    - **Logs & Telemetry (`Guest` filter)** shows `workspace already initialized; skipping maiden run setup` (proving warm snapshot hydration on an image without `git`) and `Ran 2 tests ... OK` (proving `ate-local` automatic `/usr/local/bin/ax-task-runner` injection).
+    - **Logs & Telemetry (`Guest` filter)** shows `workspace already initialized; skipping maiden run setup` (proving warm snapshot hydration on an image without `git`) and `Ran 2 tests ... OK` (proving `ate-local` automatic `/usr/local/bin/ax-runner` injection).
 
 ### Step 5: Cluster Promotion & Cross-Substrate Mobility (`⌘1` Move Task Modal & `⌘2` Map DVR)
 

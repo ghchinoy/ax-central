@@ -149,6 +149,14 @@ export interface ClustersState {
 
 const SCRIPT = "hack/setup-e2e-kind.sh";
 const LOCAL_STACK_SCRIPT = "examples/ate_local/local-stack.sh";
+
+/**
+ * Builds the ate-local stack binaries in $AX_REPO. google/ax#677 renamed
+ * cmd/ax-task-runner to cmd/ax-runner; the ax-task-runner hard link keeps
+ * older images that still reference /usr/local/bin/ax-task-runner working.
+ */
+const BUILD_ATE_LOCAL_BINS =
+  'mkdir -p .ax-local/bin/linux_arm64 && go build -o .ax-local/bin/ate-local ./cmd/ate-local && go build -o .ax-local/bin/ax-server ./cmd/ax-server && go build -o .ax-local/bin/ax ./cmd/ax && GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o .ax-local/bin/linux_arm64/ax-runner ./cmd/ax-runner && ln -f .ax-local/bin/linux_arm64/ax-runner .ax-local/bin/linux_arm64/ax-task-runner';
 const MIN_MACHINE_MEMORY = 6144;
 const shq = (s: string) => `'${s.replace(/'/g, `'\\''`)}'`;
 export const NAME_RE = /^[a-z0-9]([-a-z0-9]*[a-z0-9])?$/;
@@ -397,7 +405,7 @@ export class ClustersStore extends EventTarget {
         title: isLinux ? "ax CLI binary" : "ate-local & arm64 task runner",
         status: ateLocal.binsBuilt || binsReadyOnLinux ? "ok" : "warn",
         detail: ateLocal.binsBuilt
-          ? `${repo}/.ax-local/bin/{ax,ate-local,ax-server,linux_arm64/ax-task-runner} ready`
+          ? `${repo}/.ax-local/bin/{ax,ate-local,ax-server,linux_arm64/ax-runner} ready`
           : binsReadyOnLinux
             ? `${store.state.repoAxBin} ready`
             : `${repo}/.ax-local/bin binaries not built yet`,
@@ -517,9 +525,7 @@ export class ClustersStore extends EventTarget {
     ] = await Promise.all([
       window.studio.which("container"),
       window.studio.fileExists(`${repo}/${LOCAL_STACK_SCRIPT}`),
-      window.studio.fileExists(
-        `${repo}/.ax-local/bin/linux_arm64/ax-task-runner`,
-      ),
+      window.studio.fileExists(`${repo}/.ax-local/bin/linux_arm64/ax-runner`),
       window.studio.fileExists(`${exp}/swarm/README.md`),
       window.studio.run({
         program: "/bin/sh",
@@ -859,7 +865,7 @@ export class ClustersStore extends EventTarget {
         : target === "ax-repo"
           ? 'if [ ! -d "$AX_REPO/.git" ]; then git clone -b feat/ate-local-apple-container https://github.com/ghchinoy/ax.git "$AX_REPO"; else cd "$AX_REPO" && git checkout feat/ate-local-apple-container; fi'
           : target === "ate-local-bins"
-            ? 'cd "$AX_REPO" && mkdir -p .ax-local/bin/linux_arm64 && go build -o .ax-local/bin/ate-local ./cmd/ate-local && go build -o .ax-local/bin/ax-server ./cmd/ax-server && go build -o .ax-local/bin/ax ./cmd/ax && GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o .ax-local/bin/linux_arm64/ax-task-runner ./cmd/ax-task-runner'
+            ? `cd "$AX_REPO" && ${BUILD_ATE_LOCAL_BINS}`
             : target === "ax-experiments"
               ? 'if [ ! -d "$AX_EXPERIMENTS_REPO/.git" ]; then git clone https://github.com/ghchinoy/ax-experiments.git "$AX_EXPERIMENTS_REPO"; fi'
               : target === "agent-image"
@@ -867,7 +873,7 @@ export class ClustersStore extends EventTarget {
                 : [
                     "command -v container >/dev/null && ! container list >/dev/null 2>&1 && container system start || true",
                     '[ ! -d "$AX_REPO/.git" ] && git clone -b feat/ate-local-apple-container https://github.com/ghchinoy/ax.git "$AX_REPO" || true',
-                    'if [ -d "$AX_REPO/cmd/ate-local" ] && [ ! -x "$AX_REPO/.ax-local/bin/linux_arm64/ax-task-runner" ]; then (cd "$AX_REPO" && mkdir -p .ax-local/bin/linux_arm64 && go build -o .ax-local/bin/ate-local ./cmd/ate-local && go build -o .ax-local/bin/ax-server ./cmd/ax-server && go build -o .ax-local/bin/ax ./cmd/ax && GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o .ax-local/bin/linux_arm64/ax-task-runner ./cmd/ax-task-runner); fi',
+                    `if [ -d "$AX_REPO/cmd/ate-local" ] && [ ! -x "$AX_REPO/.ax-local/bin/linux_arm64/ax-runner" ]; then (cd "$AX_REPO" && ${BUILD_ATE_LOCAL_BINS}); fi`,
                     '[ ! -d "$AX_EXPERIMENTS_REPO/.git" ] && git clone https://github.com/ghchinoy/ax-experiments.git "$AX_EXPERIMENTS_REPO" || true',
                     'if command -v container >/dev/null && container list >/dev/null 2>&1 && [ -d "$AX_EXPERIMENTS_REPO/swarm/agent-image" ] && ! container image list 2>/dev/null | grep -q ax-agent-local; then container build -t ax-agent-local:latest "$AX_EXPERIMENTS_REPO/swarm/agent-image"; fi',
                   ].join("\n"),
