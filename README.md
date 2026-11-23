@@ -133,7 +133,7 @@ make dev
 # npm audit, Go race tests, and Vitest headless Chromium + axe-core WCAG 2.1 AA tests
 make check
 
-# Re-render Luminous Graphviz diagrams and retina WebP screenshots
+# Re-render Lustrous Graphviz diagrams and retina WebP screenshots
 make diagrams
 make screenshots
 ```

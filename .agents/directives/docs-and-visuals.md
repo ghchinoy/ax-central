@@ -1,6 +1,6 @@
 # Documentation, Diagrams & Visual Assets Directive
 
-This directive governs `README.md`, `CHANGELOG.md`, `docs/**` (Diátaxis), Luminous Graphviz diagrams (`docs/diagrams/*.dot`), and automated WebP screenshots (`docs/screenshots/*.webp`).
+This directive governs `README.md`, `CHANGELOG.md`, `docs/**` (Diátaxis), Lustrous Graphviz diagrams (`docs/diagrams/*.dot`), and automated WebP screenshots (`docs/screenshots/*.webp`).
 
 ## 1. Diátaxis Documentation Architecture (`docs/`)
 Keep the four Diátaxis quadrants strictly separated by user intent:
@@ -21,16 +21,16 @@ Keep the four Diátaxis quadrants strictly separated by user intent:
   - **No non-technical filler `-ly` adverbs**: Cut softeners/intensifiers ("simply", "actually", "genuinely", "notably"); retain technical adverbs ("atomically", "synchronously", "deterministically").
   - **No throat-clearing openers or binary-contrast frames**: Cut "Here's the thing:", "It's worth noting", and `"Not X, it's Y"` tropes.
 
-## 3. Luminous Graphviz Diagrams (`../graphviz-style`)
+## 3. Lustrous Graphviz Diagrams (`../graphviz-style`)
 - **Semantic `.dot` Sources (`docs/diagrams/*.dot`)**:
-  - Use semantic `class="..."` attributes (`primary`, `emphasis`, `accent`, `store`, `code`, `terminal`, `decision`, `external`, `async`, `weak`, `positive`, `warning`, `error`).
-  - Never hardcode hex colors or font names in `.dot` files; styling comes exclusively from `../graphviz-style/theme/luminous.gvpr`.
+  - Use semantic `class="..."` attributes (`primary`, `emphasis`, `accent`, `store`, `code`, `terminal`, `decision`, `external`, `async`, `weak`, `positive`, `warning`, `error`, `cat-*`).
+  - Never hardcode hex colors or font names in `.dot` files; styling comes exclusively from `../graphviz-style/theme/lustrous.gvpr`.
   - Use `primary` at most once or twice per diagram.
 - **Rendering & Verification (`make diagrams`)**:
   - Render both light and dark WebP variants:
     ```sh
-    gvpr -c -f ../graphviz-style/theme/luminous.gvpr -a light <file>.dot | dot -Twebp -o <file>-light.webp
-    gvpr -c -f ../graphviz-style/theme/luminous.gvpr -a dark  <file>.dot | dot -Twebp -o <file>-dark.webp
+    gvpr -c -f ../graphviz-style/theme/lustrous.gvpr -a light <file>.dot | dot -Twebp -o <file>-light.webp
+    gvpr -c -f ../graphviz-style/theme/lustrous.gvpr -a dark  <file>.dot | dot -Twebp -o <file>-dark.webp
     ```
   - Verify `fc-match "Google Sans Flex"` and `fc-match "Google Sans Code"` resolve before rendering, and visually inspect the generated `.webp` files.
   - Commit `.dot` and `*-{light,dark}.webp` files; never commit intermediate `.png` or `.svg` files.

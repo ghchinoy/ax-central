@@ -34,7 +34,7 @@ help:
 	@echo "make security       - npm audit + node-security-audit + Go readability checks"
 	@echo "make smoke-local    - run E2E debian:12 task smoke test against local Apple container stack"
 	@echo "make demo-hero      - run live 5/5 AX v0.1 Hero Demo attached to AX Central (:8090/:8091)"
-	@echo "make diagrams       - render Luminous Graphviz .dot diagrams to light/dark WebP"
+	@echo "make diagrams       - render Lustrous Graphviz .dot diagrams to light/dark WebP"
 	@echo "make screenshots    - capture light/dark WebP UI screenshots via Playwright + cwebp"
 	@echo "make format         - gofmt -w + prettier --write"
 	@echo "make doctor         - audit ax, ate-local variant, ax-experiments & kind prerequisites"
@@ -103,8 +103,8 @@ demo-hero:
 diagrams:
 	@for f in docs/diagrams/*.dot; do \
 		base=$${f%.dot}; \
-		gvpr -c -f ../graphviz-style/theme/luminous.gvpr -a light "$$f" | dot -Twebp -o "$${base}-light.webp"; \
-		gvpr -c -f ../graphviz-style/theme/luminous.gvpr -a dark  "$$f" | dot -Twebp -o "$${base}-dark.webp"; \
+		gvpr -c -f ../graphviz-style/theme/lustrous.gvpr -a light "$$f" | dot -Twebp -o "$${base}-light.webp"; \
+		gvpr -c -f ../graphviz-style/theme/lustrous.gvpr -a dark  "$$f" | dot -Twebp -o "$${base}-dark.webp"; \
 	done
 
 screenshots: frontend/node_modules
