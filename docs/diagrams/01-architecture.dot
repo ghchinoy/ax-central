@@ -1,5 +1,5 @@
 // AX Central system architecture: Lit 3 frontend, Wails v2 Go bridge,
-// and dual compute substrates (Apple container ate-local vs Kubernetes kind).
+// and multi-substrate control (standalone substrate-local vs Kubernetes clusters).
 digraph ax_central_architecture {
   label = "AX Central · system architecture";
   ranksep = 0.55;
@@ -14,7 +14,7 @@ digraph ax_central_architecture {
     subgraph cluster_ui {
       label = "Lit 3 frontend";
       shell    [label="ax-central", class="primary code"];
-      toolhost [label="ToolHost", class="emphasis"];
+      toolhost [label="ToolHost (24 tools)", class="emphasis"];
       stores   [label="Reactive stores"];
     }
 
@@ -26,19 +26,19 @@ digraph ax_central_architecture {
     }
   }
 
-  axcli [label="ax CLI", class="code"];
+  axcli [label="ax CLI (upstream)", class="code"];
 
   subgraph cluster_local {
-    label = "Apple container · ate-local";
+    label = "Apple container / Podman · substrate-local";
     class = "accent";
     ax_local  [label="ax-server :8090", class="code"];
-    ate_local [label="ate-local :50051", class="emphasis code"];
+    ate_local [label="substrate-local :50051", class="emphasis code"];
     pg_local  [label="Postgres :5432", class="store"];
     microvm   [label="ate-* microVMs", class="positive"];
   }
 
   subgraph cluster_kind {
-    label = "Kubernetes · kind";
+    label = "Kubernetes · kind / GKE / Crostini";
     ax_k8s  [label="ax-server", class="code"];
     ate_k8s [label="ate-api-server", class="code"];
     workers [label="gVisor workers"];
@@ -59,12 +59,12 @@ digraph ax_central_architecture {
   runner -> axcli    [label="exec", class="primary code"];
 
   axcli -> ax_local  [label="--server :8090", class="primary code"];
-  axcli -> ax_k8s    [label="--context kind-*", class="code"];
+  axcli -> ax_k8s    [label="--context <ctx>", class="code"];
 
   ax_local -> pg_local;
-  ax_local -> ate_local [label="gRPC", class="code"];
+  ax_local -> ate_local [label="ateapi/v1", class="code"];
   ate_local -> microvm  [label="vmnet :80", class="positive"];
 
-  ax_k8s -> ate_k8s     [label="gRPC", class="code"];
+  ax_k8s -> ate_k8s     [label="ateapi/v1", class="code"];
   ate_k8s -> workers;
 }

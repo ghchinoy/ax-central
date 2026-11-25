@@ -48,9 +48,9 @@ In **Clusters** (`⌘5`), the **Apple Container (`ate-local`)** card monitors th
 3. **Apple Container & PostgreSQL**: `ax-local-postgres` (`postgres:17-alpine` on `127.0.0.1:5432`) and active `ate-*` microVMs on `vmnet`.
 
 ### Lifecycle Controls
-* **Start / Restart Stack**: Executes `bash examples/ate_local/local-stack.sh up` inside `<repoPath>`, streaming build and startup logs to the bottom **Output** console.
-* **Stop**: Executes `bash examples/ate_local/local-stack.sh down`, stopping `ax-server`, `ate-local`, and `ax-local-postgres`.
-* **Reset**: Executes `bash examples/ate_local/local-stack.sh reset`, tearing down all `ate-*` actor containers and recreating a clean PostgreSQL store.
+* **Start / Restart Stack**: Executes `bash scripts/ax-stack.sh up` inside `<substrateLocalPath>` (`~/projects/substrate-local`, falling back to `<repoPath>/examples/ate_local/local-stack.sh up`), streaming build and startup logs to the bottom **Output** console.
+* **Stop**: Executes `bash scripts/ax-stack.sh down`, stopping `ax-server`, `substrate-local`, and `ax-local-postgres`.
+* **Reset**: Executes `bash scripts/ax-stack.sh reset`, tearing down all `ate-*` actor containers and recreating a clean PostgreSQL store.
 * **Open in Central**: Switches the active context in `store.ts` to `local`.
 
 ---
@@ -102,7 +102,7 @@ On machines where `podman` is installed without `docker`, `shell.go` writes the 
 
 1. Click the **Settings** gear icon in the top-right toolbar (or press **`⌘,`**).
 2. Configure:
-   * **`ax` binary**: Path or command name for the `ax` CLI (defaults to `ax`; `store.ts` automatically prefers `<repoPath>/.ax-local/bin/ax` when targeting `local` and `<repoPath>/.tmp/bin/ax` or `<repoPath>/bin/ax` when targeting Kubernetes clusters).
+   * **`ax` binary**: Path or command name for the `ax` CLI (defaults to `ax`; `store.ts` automatically prefers `<substrateLocalPath>/.substrate-local/bin/ax` when targeting `local` and `<repoPath>/.tmp/bin/ax` or `<repoPath>/bin/ax` when targeting Kubernetes clusters).
    * **AX repository**: Path to your `ax` checkout (defaults to `~/projects/ax`).
    * **AX Experiments**: Path to your `ax-experiments` checkout (defaults to `~/projects/ax-experiments`).
    * **Local `AX_SERVER`**: Address of the local `ax-server` (defaults to `localhost:8090`).

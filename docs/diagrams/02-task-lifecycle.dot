@@ -1,28 +1,29 @@
-// Task and workspace lifecycle across Deploy, Activity, Logs, and Terminal.
+// Task and workspace lifecycle across Deploy, Activity, Logs, Terminal, and Move Task
+// aligned with google/ax#731 + #756 (pure control-plane TaskState).
 digraph task_lifecycle {
-  label = "AX Central · task lifecycle";
+  label = "AX Central · task lifecycle (#731 · #756)";
   rankdir = LR;
   ranksep = 0.58;
   nodesep = 0.42;
 
   init      [class="dot"];
   designer  [label="Deploy", class="primary"];
-  suspended [label="Suspended", class="emphasis"];
+  suspended [label="Suspended\n(0 RAM)", class="emphasis"];
   running   [label="Running", class="positive"];
-  ssh       [label="Terminal", class="terminal"];
-  logs      [label="Live logs", class="muted"];
-  completed [label="Completed", class="positive"];
-  failed    [label="Failed", class="error"];
+  ssh       [label="Terminal / A2A", class="terminal"];
+  logs      [label="Live logs & OTel", class="muted"];
+  move      [label="Move Task\n(tar pipe)", class="cat-teal"];
+  crashed   [label="Crashed", class="error"];
   end       [class="final"];
 
   init -> designer;
   designer -> suspended  [label="ax apply", class="primary code"];
   suspended -> running   [label="ax resume", class="positive code"];
   running -> suspended   [label="ax suspend", class="weak code", constraint=false];
-  running -> ssh         [label="ax ssh", class="async code"];
-  running -> logs        [label="container logs -f", class="muted code"];
-  running -> completed   [label="exit 0", class="positive"];
-  running -> failed      [label="error", class="error"];
-  completed -> end;
-  failed -> end;
+  running -> ssh         [label="ax ssh / A2A", class="async code"];
+  running -> logs        [label="logs -f + OTel", class="muted code"];
+  running -> move        [label="cross-cluster", class="async"];
+  running -> crashed     [label="actor crash", class="error async"];
+  suspended -> end       [label="ax delete", class="muted code"];
+  crashed -> end         [label="ax delete", class="muted code"];
 }

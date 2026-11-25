@@ -20,7 +20,7 @@ Before starting a live demo or screen recording, verify these four items:
   ```bash
   make -C ~/projects/ax-central doctor
   ```
-- **Podman Machine (Cluster B on `:8091`)**: Ensure `podman machine start` has been run if you want Step 5 to promote from Apple `container` microVMs to Podman containers (otherwise `local-stack.sh multi-up` falls back to a second isolated Apple `container` daemon).
+- **Podman Machine (Cluster B on `:8091`)**: Ensure `podman machine start` has been run if you want Step 5 to promote from Apple `container` microVMs to Podman containers (otherwise `scripts/ax-stack.sh multi-up` falls back to a second isolated Apple `container` daemon).
 - **Live Gemini API Key (`GEMINI_API_KEY`)**: Export `GEMINI_API_KEY` in your login shell (`~/.zshrc` or `~/.zprofile`) so `AX Central.app` inherits it via `shell.go` and Step 3 executes live multi-turn Gemini sessions (`live-gemini`) rather than offline mock turns.
 - **Warm Image Cache (recommended before recording)**: Pre-pull the three container images once across both Apple `container` and Podman so Steps 2–5 (and live `Move Task`) never wait on network downloads on camera:
   ```bash
@@ -40,8 +40,8 @@ To clear out earlier test tasks, PostgreSQL state, and leftover Apple `container
 # In ~/projects/ax: reset PostgreSQL + Cluster A, clear warm snapshot archives so
 # Step 2 demonstrates the cold-to-warm Tag pre-warm live, and boot Cluster B (:8091)
 cd ~/projects/ax && \
-  ./examples/ate_local/local-stack.sh reset && \
-  rm -rf .ax-local/snapshots/* && \
+  ./scripts/ax-stack.sh reset && \
+  rm -rf .substrate-local/snapshots/* && \
   make local-multi-up
 ```
 
@@ -127,7 +127,7 @@ Or press **`⌘I`** (**WebMCP Inspector**) inside `AX Central.app` and execute *
 
 ### Step 1: Local Up & Studio (`⌘5` Clusters)
 
-- **What runs**: `examples/ate_local/local-stack.sh multi-up` boots **Cluster A** (`ax-server :8090` + `ate-local` Control & embedded `atenet-router :50051` on Apple `container`) and **Cluster B** (`ax-server-b :8091` + `ate-local-b :50052` on Podman), sharing `~/projects/ax/.ax-local/snapshots`.
+- **What runs**: `~/projects/substrate-local/scripts/ax-stack.sh multi-up` boots **Cluster A** (`ax-server :8090` + `substrate-local` Control & embedded `atenet-router :50051` on Apple `container`) and **Cluster B** (`ax-server-b :8091` + `substrate-local-b :50052` on Podman/Apple), sharing `~/projects/substrate-local/.substrate-local/snapshots`.
 - **What to inspect in AX Central**:
   - In **Clusters (`⌘5`)**, both the **Apple Container (`ate-local`)** card and the **Podman Cluster B (`ate-local-b`)** card report `Ready`.
   - In the **AX v0.1 Hero Demo** card on the right, `1. Local Up & Studio` marks `PASS`.

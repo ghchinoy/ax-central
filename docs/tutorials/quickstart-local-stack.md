@@ -24,12 +24,12 @@ On an Apple Silicon Mac configured for the local stack, `hack/doctor.sh` reports
 ```text
   [✓] Go & Wails toolchain             go1.26.0 + wails (/Users/you/go/bin/wails)
   [✓] Apple container runtime          /usr/local/bin/container (daemon running)
-  [✓] AX repo (ate-local variant)      /Users/you/projects/ax (branch: feat/ate-local-apple-container)
-  [✓] ate-local & arm64 task runner    /Users/you/projects/ax/.ax-local/bin ready
+  [✓] substrate-local daemon           /Users/you/projects/substrate-local (branch: main, upstream google/ax compatible)
+  [✓] substrate-local & ax-runner      /Users/you/projects/substrate-local/.substrate-local/bin ready
   [✓] ax-experiments & agent image     /Users/you/projects/ax-experiments + ax-agent-local:latest
 ```
 
-If any check reports a warning, run `make bootstrap` to clone the required branches and build `.ax-local/bin/{ax,ate-local,ax-server}` and `.ax-local/bin/linux_arm64/ax-runner` (with an `ax-task-runner` hard link for older images).
+If any check reports a warning, clone [`ghchinoy/substrate-local`](https://github.com/ghchinoy/substrate-local) into `~/projects/substrate-local` and run `make up` (or `make bootstrap` in `ax-central`) to build `.substrate-local/bin/{ax,substrate-local,ax-server}` and `.substrate-local/bin/linux_arm64/ax-runner` against unmodified upstream `google/ax`.
 
 You can verify the headless stack from your terminal at any time with:
 
@@ -53,12 +53,12 @@ make wails-build && open "build/bin/AX Central.app"
 2. Inspect the **Prerequisite Doctor** card on the right. If any dependency needs repair, click **Bootstrap All** (or the individual **Repair** button) to stream the build in the bottom console.
 3. Locate the **Apple Container (`ate-local`)** stack card:
    * If the status badge reads **Stopped**, click **Start**.
-   * The bottom **Output** console opens and streams `examples/ate_local/local-stack.sh up`.
-   * In about 3.3 seconds, all three layers report green (**Ready**):
+   * The bottom **Output** console opens and streams `~/projects/substrate-local/scripts/ax-stack.sh up` (falling back to `examples/ate_local/local-stack.sh up` if only the legacy fork is present).
+   * In about 2–3 seconds, all three layers report green (**Ready**):
      * **AX Control Plane** (`ax-server` listening on `127.0.0.1:8090`)
-     * **ate-local Substrate** (`ate-local` gRPC server listening on `127.0.0.1:50051`)
+     * **substrate-local** (`substrate-local` gRPC server listening on `127.0.0.1:50051`)
      * **Apple Container & PostgreSQL** (`ax-local-postgres` on `127.0.0.1:5432` and active `ate-*` microVMs)
-4. Click **Open Activity** on the card. AX Central sets the active context in the top toolbar to **`local`** and routes `ax` CLI commands to `localhost:8090` using `<repoPath>/.ax-local/bin/ax`.
+4. Click **Open Activity** on the card. AX Central sets the active context in the top toolbar to **`local`** and routes `ax` CLI commands to `localhost:8090` using `<substrateLocalPath>/.substrate-local/bin/ax`.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="../screenshots/clusters-dark.webp">
