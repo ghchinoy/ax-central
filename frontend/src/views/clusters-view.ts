@@ -295,14 +295,16 @@ export class AxClusters extends LitElement {
     const allUp = al.axServer && al.ateLocal && al.postgres;
     const canRunScript =
       al.available && al.scriptFound && c.tools.go && c.tools.bash;
+    const sublocal =
+      s.settings.substrateLocalPath || "~/projects/substrate-local";
     const commands = [
       {
         note: "Point your shell ax CLI at the local Apple container stack",
-        cmd: `cd ${s.settings.repoPath} && source .ax-local/env`,
+        cmd: `cd ${sublocal} && source .substrate-local/env`,
       },
       {
         note: "Inspect local stack & active ate-* microVMs on vmnet (192.168.64.x)",
-        cmd: `${s.settings.repoPath}/examples/ate_local/local-stack.sh status`,
+        cmd: `${sublocal}/scripts/ax-stack.sh status`,
       },
       {
         note: "Run multi-agent swarm recipe 01 from ax-experiments",
@@ -531,14 +533,16 @@ export class AxClusters extends LitElement {
     const allUp = al.axServerB && al.ateLocalB && al.postgres;
     const canRunScript =
       al.available && al.scriptFound && c.tools.go && c.tools.bash;
+    const sublocal =
+      s.settings.substrateLocalPath || "~/projects/substrate-local";
     const commands = [
       {
         note: "Start dual-cluster stack (Cluster A Apple :8090 + Cluster B Podman :8091)",
-        cmd: `${s.settings.repoPath}/examples/ate_local/local-stack.sh multi-up`,
+        cmd: `${sublocal}/scripts/ax-stack.sh multi-up`,
       },
       {
         note: "Migrate a task from Cluster A (:8090) to Cluster B (:8091)",
-        cmd: `${s.settings.repoPath}/examples/ate_local/local-stack.sh migrate local-task`,
+        cmd: `${sublocal}/scripts/ax-stack.sh migrate local-task`,
       },
     ];
 

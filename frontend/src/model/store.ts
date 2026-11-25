@@ -235,6 +235,7 @@ export function parseTraceJSONLToFrames(text: string): DVRFrame[] {
 export interface Settings {
   axPath: string;
   repoPath: string;
+  substrateLocalPath: string;
   experimentsPath: string;
   localServer: string;
   localServerB: string;
@@ -288,6 +289,7 @@ function loadSettings(): Settings {
   const defaults: Settings = {
     axPath: "ax",
     repoPath: "~/projects/ax",
+    substrateLocalPath: "~/projects/substrate-local",
     experimentsPath: "~/projects/ax-experiments",
     localServer: "localhost:8090",
     localServerB: "localhost:8091",
@@ -460,23 +462,32 @@ export class Store extends EventTarget {
     ensureStudioBridge();
     const info = await window.studio.platform();
     const repoExpanded = this.state.settings.repoPath.replace(/^~/, info.home);
+    const sublocalExpanded = (
+      this.state.settings.substrateLocalPath || "~/projects/substrate-local"
+    ).replace(/^~/, info.home);
+    const candidateSubLocalAx = `${sublocalExpanded}/.substrate-local/bin/ax`;
     const candidateLocalAx = `${repoExpanded}/.ax-local/bin/ax`;
     const candidateTmpAx = `${repoExpanded}/.tmp/bin/ax`;
     const candidateRepoBinAx = `${repoExpanded}/bin/ax`;
     const candidateHomeAx = `${info.home}/.ax/bin/ax`;
+    const candidateSubClusterBConfig = `${sublocalExpanded}/.substrate-local/substrate-local-b.yaml`;
     const candidateClusterBConfig = `${repoExpanded}/.ax-local/ate-local-b.yaml`;
     const [
+      hasSubLocalAx,
       hasLocalAx,
       hasTmpAx,
       hasRepoBinAx,
       hasHomeAx,
+      hasSubClusterBConfig,
       hasClusterBConfig,
       podmanBin,
     ] = await Promise.all([
+      window.studio.fileExists(candidateSubLocalAx),
       window.studio.fileExists(candidateLocalAx),
       window.studio.fileExists(candidateTmpAx),
       window.studio.fileExists(candidateRepoBinAx),
       window.studio.fileExists(candidateHomeAx),
+      window.studio.fileExists(candidateSubClusterBConfig),
       window.studio.fileExists(candidateClusterBConfig),
       window.studio.which("podman"),
     ]);
@@ -488,9 +499,14 @@ export class Store extends EventTarget {
           ? candidateHomeAx
           : null;
     this.set({
-      localAxBin: hasLocalAx ? candidateLocalAx : null,
+      localAxBin: hasSubLocalAx
+        ? candidateSubLocalAx
+        : hasLocalAx
+          ? candidateLocalAx
+          : null,
       repoAxBin,
     });
+    const hasClusterB = hasSubClusterBConfig || hasClusterBConfig;
 
     const v = result(
       await window.studio.run({
@@ -533,7 +549,7 @@ export class Store extends EventTarget {
           : [...contexts, localCtx];
     }
     if (
-      (hasClusterBConfig || hasLocalAx || !!podmanBin) &&
+      (hasClusterB || hasSubLocalAx || hasLocalAx || !!podmanBin) &&
       !contexts.some((c) => c.name === "local-podman")
     ) {
       const serverB = this.state.settings.localServerB || "localhost:8091";
@@ -762,7 +778,13 @@ export class Store extends EventTarget {
         : "default";
     const info = await window.studio.platform();
     const repoExpanded = this.state.settings.repoPath.replace(/^~/, info.home);
-    const snapDir = `${repoExpanded}/.ax-local/snapshots/${ates}`;
+    const sublocalExpanded = (
+      this.state.settings.substrateLocalPath || "~/projects/substrate-local"
+    ).replace(/^~/, info.home);
+    const subSnapDir = `${sublocalExpanded}/.substrate-local/snapshots/${ates}`;
+    const snapDir = (await window.studio.fileExists(subSnapDir))
+      ? subSnapDir
+      : `${repoExpanded}/.ax-local/snapshots/${ates}`;
     const r = await window.studio.run({
       program: "/bin/sh",
       args: [

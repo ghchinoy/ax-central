@@ -20,8 +20,15 @@ set -euo pipefail
 
 AX_REPO="${AX_REPO:-$HOME/projects/ax}"
 AX_REPO="${AX_REPO/#\~/$HOME}"
-STACK_SCRIPT="${AX_REPO}/examples/ate_local/local-stack.sh"
-AX_BIN="${AX_REPO}/.ax-local/bin/ax"
+SUBSTRATE_LOCAL_REPO="${SUBSTRATE_LOCAL_REPO:-$HOME/projects/substrate-local}"
+SUBSTRATE_LOCAL_REPO="${SUBSTRATE_LOCAL_REPO/#\~/$HOME}"
+if [[ -f "${SUBSTRATE_LOCAL_REPO}/scripts/ax-stack.sh" ]]; then
+  STACK_SCRIPT="${SUBSTRATE_LOCAL_REPO}/scripts/ax-stack.sh"
+  AX_BIN="${SUBSTRATE_LOCAL_REPO}/.substrate-local/bin/ax"
+else
+  STACK_SCRIPT="${AX_REPO}/examples/ate_local/local-stack.sh"
+  AX_BIN="${AX_REPO}/.ax-local/bin/ax"
+fi
 SERVER_ADDR="${AX_SERVER:-localhost:8090}"
 export ATENET_ROUTER_ADDR="${ATENET_ROUTER_ADDR:-127.0.0.1:50051}"
 

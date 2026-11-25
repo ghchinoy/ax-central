@@ -656,9 +656,9 @@ describe("WebMCP ToolHost & AX tools", () => {
       ...clustersEl.shadowRoot!.querySelectorAll(".console-line"),
     ].map((n) => n.textContent);
     expect(consoleLines).toEqual([
-      "▶ Start Apple Container stack (ate-local)",
+      "▶ Start Apple Container stack (substrate-local)",
       "==> Completed stream command",
-      "✓ Start Apple Container stack (ate-local) done",
+      "✓ Start Apple Container stack (substrate-local) done",
     ]);
 
     openActivityBtn.click();

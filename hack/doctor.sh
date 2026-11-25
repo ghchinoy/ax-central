@@ -24,6 +24,8 @@ set -euo pipefail
 
 AX_REPO="${AX_REPO:-$HOME/projects/ax}"
 AX_REPO="${AX_REPO/#\~/$HOME}"
+SUBSTRATE_LOCAL_REPO="${SUBSTRATE_LOCAL_REPO:-$HOME/projects/substrate-local}"
+SUBSTRATE_LOCAL_REPO="${SUBSTRATE_LOCAL_REPO/#\~/$HOME}"
 AX_EXPERIMENTS_REPO="${AX_EXPERIMENTS_REPO:-$HOME/projects/ax-experiments}"
 AX_EXPERIMENTS_REPO="${AX_EXPERIMENTS_REPO/#\~/$HOME}"
 
@@ -226,30 +228,35 @@ else
   append_check "apple-container" "ate-local" "Apple container runtime" "warn" "/usr/local/bin/container not found" "brew install --cask container && container system start"
 fi
 
-# 3. AX repository & ate-local / Kind variant
-if [[ -d "$AX_REPO" ]]; then
+# 3. substrate-local / AX repository variant
+if [[ -f "$SUBSTRATE_LOCAL_REPO/scripts/ax-stack.sh" && -d "$SUBSTRATE_LOCAL_REPO/cmd/substrate-local" ]]; then
+  SUB_BRANCH="$(git -C "$SUBSTRATE_LOCAL_REPO" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")"
+  append_check "ax-repo-variant" "ate-local" "substrate-local daemon" "ok" "${SUBSTRATE_LOCAL_REPO} (branch: ${SUB_BRANCH}, upstream google/ax compatible)" ""
+elif [[ -d "$AX_REPO" ]]; then
   BRANCH="$(git -C "$AX_REPO" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")"
   if [[ -f "$AX_REPO/examples/ate_local/local-stack.sh" && -d "$AX_REPO/cmd/ate-local" ]]; then
     append_check "ax-repo-variant" "ate-local" "AX repo (ate-local variant)" "ok" "${AX_REPO} (branch: ${BRANCH})" ""
   elif [[ "$OS_NAME" == "Linux" && -f "$AX_REPO/hack/setup-e2e-kind.sh" ]]; then
     append_check "ax-repo-variant" "ate-local" "AX repo (Kind / Crostini)" "ok" "${AX_REPO} (branch: ${BRANCH}, setup-e2e-kind.sh ready)" ""
   else
-    append_check "ax-repo-variant" "ate-local" "AX repo (ate-local variant)" "warn" "${AX_REPO} missing cmd/ate-local (needs feat/ate-local-apple-container)" "hack/doctor.sh --install ax-repo"
+    append_check "ax-repo-variant" "ate-local" "substrate-local daemon" "warn" "${SUBSTRATE_LOCAL_REPO} not found (and ${AX_REPO} has no cmd/ate-local)" "git clone https://github.com/ghchinoy/substrate-local.git ${SUBSTRATE_LOCAL_REPO}"
   fi
 else
-  append_check "ax-repo-variant" "ate-local" "AX repo (ate-local variant)" "fail" "${AX_REPO} not found" "hack/doctor.sh --install ax-repo"
+  append_check "ax-repo-variant" "ate-local" "substrate-local daemon" "fail" "Neither ${SUBSTRATE_LOCAL_REPO} nor ${AX_REPO} found" "git clone https://github.com/ghchinoy/substrate-local.git ${SUBSTRATE_LOCAL_REPO}"
 fi
 
-# 4. Built ate-local / Kind binaries
-if [[ -x "$AX_REPO/.ax-local/bin/ax" && -x "$AX_REPO/.ax-local/bin/ate-local" && -x "$AX_REPO/.ax-local/bin/ax-server" && -x "$AX_REPO/.ax-local/bin/linux_arm64/ax-runner" ]]; then
+# 4. Built substrate-local / ate-local / Kind binaries
+if [[ -x "$SUBSTRATE_LOCAL_REPO/.substrate-local/bin/ax" && -x "$SUBSTRATE_LOCAL_REPO/.substrate-local/bin/substrate-local" && -x "$SUBSTRATE_LOCAL_REPO/.substrate-local/bin/ax-server" && -x "$SUBSTRATE_LOCAL_REPO/.substrate-local/bin/linux_arm64/ax-runner" ]]; then
+  append_check "ate-local-bins" "ate-local" "substrate-local & ax-runner" "ok" "${SUBSTRATE_LOCAL_REPO}/.substrate-local/bin ready" ""
+elif [[ -x "$AX_REPO/.ax-local/bin/ax" && -x "$AX_REPO/.ax-local/bin/ate-local" && -x "$AX_REPO/.ax-local/bin/ax-server" && -x "$AX_REPO/.ax-local/bin/linux_arm64/ax-runner" ]]; then
   append_check "ate-local-bins" "ate-local" "ate-local & arm64 task runner" "ok" "${AX_REPO}/.ax-local/bin ready" ""
 elif [[ "$OS_NAME" == "Linux" && ( -x "$AX_REPO/.tmp/bin/ax" || -x "$AX_REPO/bin/ax" ) ]]; then
   append_check "ate-local-bins" "ate-local" "ax CLI & task runner" "ok" "${AX_REPO}/.tmp/bin/ax (or bin/ax) ready" ""
 else
   if AX_ON_PATH="$(command -v ax 2>/dev/null)"; then
-    append_check "ate-local-bins" "ate-local" "ate-local & arm64 task runner" "warn" "ax on PATH (${AX_ON_PATH}), .ax-local/bin not built yet" "hack/doctor.sh --install ate-local-bins"
+    append_check "ate-local-bins" "ate-local" "substrate-local & ax-runner" "warn" "ax on PATH (${AX_ON_PATH}), local stack binaries not built yet" "cd ${SUBSTRATE_LOCAL_REPO} && make up"
   else
-    append_check "ate-local-bins" "ate-local" "ate-local & arm64 task runner" "warn" ".ax-local/bin/{ax,ate-local,ax-server} not built yet" "hack/doctor.sh --install ate-local-bins"
+    append_check "ate-local-bins" "ate-local" "substrate-local & ax-runner" "warn" "local stack binaries not built yet" "cd ${SUBSTRATE_LOCAL_REPO} && make up"
   fi
 fi
 

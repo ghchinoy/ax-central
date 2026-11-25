@@ -166,6 +166,7 @@ export interface ClustersState {
 }
 
 const SCRIPT = "hack/setup-e2e-kind.sh";
+const SUBSTRATE_LOCAL_STACK_SCRIPT = "scripts/ax-stack.sh";
 const LOCAL_STACK_SCRIPT = "examples/ate_local/local-stack.sh";
 
 /**
@@ -746,15 +747,23 @@ export class ClustersStore extends EventTarget {
   private async refreshAteLocal(): Promise<AppleContainerStack> {
     const cur = this.state.ateLocal;
     const repo = store.state.settings.repoPath;
+    const sublocal =
+      store.state.settings.substrateLocalPath || "~/projects/substrate-local";
     const exp = store.state.settings.experimentsPath;
     const [
       containerCli,
-      localScriptFound,
-      binsBuilt,
+      sublocalScriptFound,
+      sublocalBinsBuilt,
+      legacyScriptFound,
+      legacyBinsBuilt,
       experimentsFound,
       probeRes,
     ] = await Promise.all([
       window.studio.which("container"),
+      window.studio.fileExists(`${sublocal}/${SUBSTRATE_LOCAL_STACK_SCRIPT}`),
+      window.studio.fileExists(
+        `${sublocal}/.substrate-local/bin/linux_arm64/ax-runner`,
+      ),
       window.studio.fileExists(`${repo}/${LOCAL_STACK_SCRIPT}`),
       window.studio.fileExists(`${repo}/.ax-local/bin/linux_arm64/ax-runner`),
       window.studio.fileExists(`${exp}/swarm/README.md`),
@@ -763,6 +772,8 @@ export class ClustersStore extends EventTarget {
         args: ["-c", PROBE_ATE_LOCAL, "probe-ate-local"],
       }),
     ]);
+    const localScriptFound = sublocalScriptFound || legacyScriptFound;
+    const binsBuilt = sublocalBinsBuilt || legacyBinsBuilt;
     const kv = Object.fromEntries(
       probeRes.stdout
         .split("\n")
@@ -1113,11 +1124,23 @@ export class ClustersStore extends EventTarget {
     );
   }
 
+  private async localStackCmd(action: string): Promise<string> {
+    const info = await window.studio.platform();
+    const sublocal = (
+      store.state.settings.substrateLocalPath || "~/projects/substrate-local"
+    ).replace(/^~/, info.home);
+    const subScript = `${sublocal}/${SUBSTRATE_LOCAL_STACK_SCRIPT}`;
+    if (await window.studio.fileExists(subScript)) {
+      return `bash ${shq(subScript)} ${action}`;
+    }
+    return `bash ${LOCAL_STACK_SCRIPT} ${action}`;
+  }
+
   async localStackUp(): Promise<boolean> {
     return this.exec(
       { kind: "local-up", cluster: "ate-local" },
-      "Start Apple Container stack (ate-local)",
-      `bash ${LOCAL_STACK_SCRIPT} up`,
+      "Start Apple Container stack (substrate-local)",
+      await this.localStackCmd("up"),
     );
   }
 
@@ -1125,15 +1148,15 @@ export class ClustersStore extends EventTarget {
     return this.exec(
       { kind: "local-up", cluster: "ate-local-b" },
       "Start Dual-Cluster stack (Cluster A Apple + Cluster B Podman)",
-      `bash ${LOCAL_STACK_SCRIPT} multi-up`,
+      await this.localStackCmd("multi-up"),
     );
   }
 
   async localStackDown(): Promise<boolean> {
     return this.exec(
       { kind: "local-down", cluster: "ate-local" },
-      "Stop Apple Container stack (ate-local)",
-      `bash ${LOCAL_STACK_SCRIPT} down`,
+      "Stop Apple Container stack (substrate-local)",
+      await this.localStackCmd("down"),
     );
   }
 
@@ -1141,15 +1164,15 @@ export class ClustersStore extends EventTarget {
     return this.exec(
       { kind: "local-down", cluster: "ate-local-b" },
       "Stop Dual-Cluster stack (multi-down)",
-      `bash ${LOCAL_STACK_SCRIPT} multi-down`,
+      await this.localStackCmd("multi-down"),
     );
   }
 
   async localStackReset(): Promise<boolean> {
     return this.exec(
       { kind: "local-reset", cluster: "ate-local" },
-      "Reset Apple Container stack (ate-local)",
-      `bash ${LOCAL_STACK_SCRIPT} reset`,
+      "Reset Apple Container stack (substrate-local)",
+      await this.localStackCmd("reset"),
     );
   }
 
