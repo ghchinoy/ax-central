@@ -250,7 +250,7 @@ export const DEFAULT_REGISTRIES: ImageRegistry[] = [
         name: "antigravity",
         digest: AGENTEXECUTOR_IMAGE_DIGESTS.antigravity,
         description:
-          "Pure Antigravity (agy) image with the ax-harness launcher; no AX runner baked in",
+          "Pure Antigravity (agy) image with the ax-launcher entry point; no AX runner baked in",
       },
     ],
   },

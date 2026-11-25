@@ -224,7 +224,9 @@ crds=0
 for crd in workerpools.ate.dev sandboxconfigs.ate.dev; do k get crd "$crd" >/dev/null && crds=$((crds + 1)); done
 echo "substrate_crds=$crds"
 echo "workerpools=$(k get workerpools.ate.dev -A --no-headers | wc -l | tr -d ' ')"
-"$ax" install --help 2>&1 | grep -q 'ax install \\[flags\\]' && echo ax_install=1 || echo ax_install=0
+help=$("$ax" install --help 2>&1)
+printf '%s\\n' "$help" | grep -q 'ax install \\[flags\\]' && echo ax_install=1 || echo ax_install=0
+echo "default_server_image=$(printf '%s\\n' "$help" | grep -- '--server-image' | sed -n 's/.*(default: "\\([^"]*\\)").*/\\1/p' | head -n1)"
 `;
 
 /** Minimum Kubernetes minor version Agent Substrate v1.0 runs on. */
@@ -335,38 +337,53 @@ export function evaluateInstallPreflight(
   });
 
   const img = opts.serverImage.trim();
+  const defaultImg = (kv.default_server_image ?? "").trim();
   const imgProblem = imageRefProblem(img);
   const runnerProblem = imageRefProblem(opts.runnerVolumeImage?.trim() ?? "");
   const localhostImage = /^(localhost|127\.0\.0\.1)(:\d+)?\//.test(img);
   add(
-    !img
-      ? {
-          id: "server-image",
-          title: "ax-server image",
-          status: "fail",
-          detail:
-            "Set the ax-server image (--server-image / AX_SERVER_IMAGE); development builds have no default.",
-        }
-      : imgProblem || runnerProblem
+    !img && defaultImg
+      ? runnerProblem
         ? {
             id: "server-image",
             title: "ax-server image",
             status: "fail",
-            detail: `Invalid image reference: ${imgProblem ?? runnerProblem}`,
+            detail: `Invalid image reference: ${runnerProblem}`,
           }
-        : localhostImage && !opts.isKind
+        : {
+            id: "server-image",
+            title: "ax-server image",
+            status: "ok",
+            detail: `Uses release default (${defaultImg})`,
+          }
+      : !img
+        ? {
+            id: "server-image",
+            title: "ax-server image",
+            status: "fail",
+            detail:
+              "Set the ax-server image (--server-image / AX_SERVER_IMAGE); development builds have no default.",
+          }
+        : imgProblem || runnerProblem
           ? {
               id: "server-image",
               title: "ax-server image",
-              status: "warn",
-              detail: `${img} is on a localhost registry, which only Kind clusters created by ax local can pull from.`,
+              status: "fail",
+              detail: `Invalid image reference: ${imgProblem ?? runnerProblem}`,
             }
-          : {
-              id: "server-image",
-              title: "ax-server image",
-              status: "ok",
-              detail: img,
-            },
+          : localhostImage && !opts.isKind
+            ? {
+                id: "server-image",
+                title: "ax-server image",
+                status: "warn",
+                detail: `${img} is on a localhost registry, which only Kind clusters created by ax local can pull from.`,
+              }
+            : {
+                id: "server-image",
+                title: "ax-server image",
+                status: "ok",
+                detail: img,
+              },
   );
 
   add({
@@ -1070,13 +1087,10 @@ export class ClustersStore extends EventTarget {
       return false;
     }
     const { serverImage, runnerVolumeImage } = this.state.installImages;
-    const args = [
-      "install",
-      "--context",
-      cl.context,
-      "--server-image",
-      serverImage.trim(),
-    ];
+    const args = ["install", "--context", cl.context];
+    if (serverImage.trim()) {
+      args.push("--server-image", serverImage.trim());
+    }
     if (runnerVolumeImage.trim()) {
       args.push("--runner-volume-image", runnerVolumeImage.trim());
     }

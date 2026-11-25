@@ -540,7 +540,6 @@ export class AxTaskInspector extends LitElement {
           ["Actor UID", detail?.actorUid],
           ["Template", detail?.ateActorTemplate],
           ["Worker IP", t.workerIP],
-          ["Status Detail", detail?.statusDetail],
           [
             "Debug",
             detail
@@ -665,43 +664,6 @@ export class AxTaskInspector extends LitElement {
                       </dl>
                     </section>
 
-                    ${
-                      detail?.outcome
-                        ? html`
-                            <section class="inspector-section">
-                              <h4>Outcome</h4>
-                              <div class="col" style="gap:6px">
-                                <div class="row" style="font-size:12px">
-                                  <strong
-                                    ><bdi dir="ltr"
-                                      >${detail.outcome.result ?? "Completed"}</bdi
-                                    ></strong
-                                  >
-                                  ${
-                                    detail.outcome.exitCode !== undefined
-                                      ? html`<span class="caption faint mono"
-                                          >exit ${detail.outcome.exitCode}</span
-                                        >`
-                                      : nothing
-                                  }
-                                </div>
-                                ${
-                                  detail.outcome.output
-                                    ? html`<div class="manifest selectable">
-                                        <span class="manifest-text"
-                                          >${detail.outcome.output.replace(
-                                            /\r/g,
-                                            "",
-                                          )}</span
-                                        >
-                                      </div>`
-                                    : nothing
-                                }
-                              </div>
-                            </section>
-                          `
-                        : nothing
-                    }
                     ${
                       detail?.conditions.length
                         ? html`

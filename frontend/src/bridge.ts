@@ -273,7 +273,7 @@ export function createFallbackStudio(
       return {
         status: 0,
         stdout:
-          "NAME            ATESPACE   STATE       ACTOR     AGE\ngemini-a1b2c3   default    Working     actor-1   4m\nshell-task-01   default    Suspended   <none>    18m\n",
+          "NAME            ATESPACE   STATE       ACTOR     AGE\ngemini-a1b2c3   default    Running     actor-1   4m\nshell-task-01   default    Suspended   <none>    18m\n",
         stderr: "",
       };
     }
@@ -297,7 +297,7 @@ export function createFallbackStudio(
       const name = req.args[req.args.length - 1] ?? "task";
       return {
         status: 0,
-        stdout: `apiVersion: ax.io/v1alpha1\nkind: Task\nmetadata:\n  name: ${name}\n  createTime: "2026-11-01T12:00:00Z"\nspec:\n  profile:\n    image: ghcr.io/rakyll/ax-images/gemini@sha256:e3d8d95\n    resources:\n      limits:\n        cpu: "2"\n        memory: "4Gi"\n  workspace:\n    name: humanize-gemini\n  debug: true\nstatus:\n  state: TASK_STATE_WORKING\n  actorUid: "uid-actor-1"\n  conditions:\n    - type: WorkspaceReady\n      status: "True"\n      reason: SetupComplete\n      message: Workspace mounted at /workspace\n    - type: Ready\n      status: "True"\n      reason: TaskRunning\n      message: Task sandbox is running\n`,
+        stdout: `apiVersion: ax.io/v1alpha1\nkind: Task\nmetadata:\n  name: ${name}\n  createTime: "2026-11-01T12:00:00Z"\nspec:\n  profile:\n    image: ghcr.io/rakyll/ax-images/gemini@sha256:e3d8d95\n    resources:\n      limits:\n        cpu: "2"\n        memory: "4Gi"\n  workspace:\n    name: humanize-gemini\n  debug: true\nstatus:\n  state: TASK_STATE_RUNNING\n  actorUid: "uid-actor-1"\n  conditions:\n    - type: WorkspaceReady\n      status: "True"\n      reason: SetupComplete\n      message: Workspace mounted at /workspace\n    - type: Ready\n      status: "True"\n      reason: TaskRunning\n      message: Task sandbox is running\n`,
         stderr: "",
       };
     }

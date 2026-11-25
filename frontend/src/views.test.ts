@@ -54,6 +54,7 @@ import {
   parseTasks,
   parseWorkspaces,
   shortImage,
+  toPhase,
   validateImage,
   validateLabel,
 } from "./model/resources";
@@ -124,8 +125,20 @@ describe("resources & designer models", () => {
       actor: "act-1",
     });
 
+    // google/ax#731 + #756: TaskState mirrors Substrate ActorState + QUEUED.
+    expect(toPhase("TASK_STATE_RUNNING")).toBe("running");
+    expect(toPhase("Running")).toBe("running");
+    expect(toPhase("TASK_STATE_RESUMING")).toBe("pending");
+    expect(toPhase("TASK_STATE_REVERTING")).toBe("pending");
+    expect(toPhase("TASK_STATE_QUEUED")).toBe("pending");
+    expect(toPhase("TASK_STATE_SUSPENDING")).toBe("suspended");
+    expect(toPhase("TASK_STATE_SUSPENDED")).toBe("suspended");
+    expect(toPhase("TASK_STATE_CRASHED")).toBe("failed");
+    expect(toPhase("TASK_STATE_DELETING")).toBe("terminating");
+    expect(toPhase("")).toBe("pending");
+
     const detail = parseTaskYAML(
-      "apiVersion: ax.io/v1alpha1\nkind: Task\nspec:\n  profile:\n    image: repo/img@sha256:abcdef1234567\n    resources:\n      limits:\n        cpu: '2'\n  commands: ['sh', '-c', 'echo hi']\n  goal:\n    text: 'Fix unit tests'\n  gateway:\n    name: egress-gw\n  workspace:\n    name: demo-ws\n  debug: true\nstatus:\n  state: TASK_STATE_WORKING\n  actorUid: uid-123\n  ateTemplate:\n    name: ax-tmpl-01\n    atespace: default\n  resolvedArgv: ['sh', '-c', 'echo hi']\n  statusDetail:\n    reason: TASK_STATUS_REASON_PROVISIONING_FAILED\n    detail: image pull failed\n  outcome:\n    result: TASK_RESULT_SUCCEEDED\n    exitCode: 0\n    output: 'all tests passed'\n",
+      "apiVersion: ax.io/v1alpha1\nkind: Task\nspec:\n  profile:\n    image: repo/img@sha256:abcdef1234567\n    resources:\n      limits:\n        cpu: '2'\n  commands: ['sh', '-c', 'echo hi']\n  goal:\n    text: 'Fix unit tests'\n  gateway:\n    name: egress-gw\n  workspace:\n    name: demo-ws\n  debug: true\nstatus:\n  state: TASK_STATE_RUNNING\n  actorUid: uid-123\n  ateTemplate:\n    name: ax-tmpl-01\n    atespace: default\n  resolvedArgv: ['sh', '-c', 'echo hi']\n  conditions:\n    - type: Ready\n      status: 'False'\n      reason: ActorCreationFailed\n      message: image pull failed\n",
     );
     expect(detail.workspace).toBe("demo-ws");
     expect(detail.command).toEqual(["sh", "-c", "echo hi"]);
@@ -144,11 +157,11 @@ describe("resources & designer models", () => {
     );
     expect(templated.ateActorTemplate).toBe("shared-tmpl");
     expect(detail.resolvedArgv).toEqual(["sh", "-c", "echo hi"]);
-    expect(detail.statusDetail).toContain("image pull failed");
-    expect(detail.outcome).toEqual({
-      result: "TASK_RESULT_SUCCEEDED",
-      exitCode: 0,
-      output: "all tests passed",
+    expect(detail.conditions[0]).toMatchObject({
+      type: "Ready",
+      status: "False",
+      reason: "ActorCreationFailed",
+      message: "image pull failed",
     });
     expect(detail.debug).toBe(true);
     expect(shortImage(detail.image)).toBe("img@abcdef1");
@@ -403,6 +416,19 @@ describe("resources & designer models", () => {
     expect(noImageByID["k8s-version"].status).toBe("warn");
     expect(noImageByID.workerpool.status).toBe("warn");
     expect(noImageByID["server-image"].status).toBe("fail");
+
+    // google/ax#678: tagged release binaries ship a default ax-server image.
+    const releaseDefault = evaluateInstallPreflight(
+      {
+        ...ready,
+        default_server_image: "ghcr.io/google/ax/ax-server:v0.4.0-rc.2",
+      },
+      { serverImage: "", isKind: false },
+    );
+    expect(releaseDefault.find((c) => c.id === "server-image")?.status).toBe(
+      "ok",
+    );
+    expect(preflightBlocks(releaseDefault)).toBe(false);
 
     const localhostImg = evaluateInstallPreflight(ready, {
       serverImage: "localhost:5001/ax-server:dev",

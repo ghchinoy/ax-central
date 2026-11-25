@@ -897,7 +897,10 @@ export class AxClusters extends LitElement {
           Substrate.
         </div>
         <label class="install-field">
-          <span class="caption">ax-server image (required)</span>
+          <span class="caption"
+            >ax-server image (optional on release builds; required on dev
+            builds)</span
+          >
           <input
             class="input mono ${srvErr ? "invalid" : ""}"
             placeholder="registry/ax-server@sha256:…"

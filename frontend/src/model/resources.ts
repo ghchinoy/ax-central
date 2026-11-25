@@ -39,9 +39,17 @@ export const PHASES: Phase[] = [
 
 export function toPhase(raw: string | undefined): Phase {
   const s = (raw ?? "").toLowerCase().replace(/^task_state_/, "");
-  if (s === "" || s === "<none>" || s === "unspecified" || s === "queued")
+  if (
+    s === "" ||
+    s === "<none>" ||
+    s === "unspecified" ||
+    s === "queued" ||
+    s === "resuming" ||
+    s === "reverting"
+  )
     return "pending";
   if (
+    s === "running" ||
     s === "working" ||
     s === "idle" ||
     s === "requiresaction" ||
@@ -49,6 +57,8 @@ export function toPhase(raw: string | undefined): Phase {
   )
     return "running";
   if (s === "suspending") return "suspended";
+  if (s === "crashed") return "failed";
+  if (s === "deleting") return "terminating";
   if (s === "succeeded" || s === "cancelled") return "completed";
   return s;
 }
@@ -97,12 +107,6 @@ export interface Condition {
   updateTime?: string;
 }
 
-export interface TaskOutcome {
-  result?: string;
-  exitCode?: number;
-  output?: string;
-}
-
 /** What `ax get task <name>` adds on top of the list view. */
 export interface TaskDetail {
   workspace?: string;
@@ -117,8 +121,6 @@ export interface TaskDetail {
   actorUid?: string;
   ateActorTemplate?: string;
   resolvedArgv?: string[];
-  statusDetail?: string;
-  outcome?: TaskOutcome;
   goal?: string;
   gateway?: string;
   conditions: Condition[];
@@ -286,20 +288,6 @@ export function parseTaskYAML(text: string): TaskDetail {
   const resolvedArgv = Array.isArray(status.resolvedArgv)
     ? status.resolvedArgv.map(String)
     : undefined;
-  const sd = status.statusDetail;
-  const statusDetail =
-    sd && (sd.detail || sd.reason)
-      ? [sd.reason, sd.detail].filter(Boolean).join(": ")
-      : undefined;
-  const oc = status.outcome;
-  const outcome: TaskOutcome | undefined =
-    oc && (oc.result || oc.output || oc.exitCode !== undefined)
-      ? {
-          result: oc.result ? String(oc.result) : undefined,
-          exitCode: typeof oc.exitCode === "number" ? oc.exitCode : undefined,
-          output: oc.output ? String(oc.output) : undefined,
-        }
-      : undefined;
   return {
     workspace: spec.workspace?.name,
     image: profile.image ?? spec.image,
@@ -317,8 +305,6 @@ export function parseTaskYAML(text: string): TaskDetail {
       profile.ateTemplate?.name ||
       profile.ateActorTemplate,
     resolvedArgv,
-    statusDetail,
-    outcome,
     goal:
       typeof spec.goal?.text === "string"
         ? spec.goal.text
