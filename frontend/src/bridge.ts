@@ -338,6 +338,23 @@ export function createFallbackStudio(
         stderr: "",
       };
     }
+    if (req.program === "kubectl") {
+      const args = req.args ?? [];
+      if (args.includes("get") && args.includes("secret")) {
+        return {
+          status: 0,
+          stdout: "found\napi-key\n",
+          stderr: "",
+        };
+      }
+      if (args.includes("apply") && args.includes("-f")) {
+        return {
+          status: 0,
+          stdout: "secret/mock-secret configured\n",
+          stderr: "",
+        };
+      }
+    }
     if (req.program === "/bin/sh" && req.args?.[2] === "probe-snapshots") {
       return {
         status: 0,

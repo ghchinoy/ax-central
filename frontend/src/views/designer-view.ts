@@ -40,9 +40,16 @@ import {
 import {
   repoName,
   shortImage,
+  isLocalContext,
   validateImage,
   validateLabel,
 } from "../model/resources";
+import {
+  type CredentialSecretStatus,
+  DEFAULT_SECRET_NAMESPACE,
+  probeCredentialSecret,
+  saveCredentialSecret,
+} from "../model/secrets";
 import { store } from "../model/store";
 import { sharedStyles } from "../shared-styles";
 
@@ -73,6 +80,11 @@ export class AxDesigner extends LitElement {
   @state() private copied = false;
   @state() private resolvingDigest = false;
   @state() private digestMessage: string | null = null;
+  @state() private secretNamespace = DEFAULT_SECRET_NAMESPACE;
+  @state() private secretValue = "";
+  @state() private secretBusy = false;
+  @state() private secretStatus: CredentialSecretStatus | null = null;
+  @state() private secretNotice: string | null = null;
   @query(".split") private splitEl?: HTMLElement;
 
   private offDesigner: (() => void) | null = null;
@@ -85,7 +97,11 @@ export class AxDesigner extends LitElement {
       this.createdTaskName = null;
       this.requestUpdate();
     });
-    this.offStore = store.subscribe(() => this.requestUpdate());
+    this.offStore = store.subscribe(() => {
+      this.secretStatus = null;
+      this.secretNotice = null;
+      this.requestUpdate();
+    });
     window.addEventListener("ax:apply", this.onApplyEvent);
     window.addEventListener("mousedown", this.onWindowDown);
   }
@@ -191,6 +207,169 @@ export class AxDesigner extends LitElement {
         </header>
         <div class="ds-body">${body}</div>
       </section>
+    `;
+  }
+
+  private async checkClusterSecret(): Promise<void> {
+    const d = designer.draft;
+    this.secretBusy = true;
+    this.secretNotice = null;
+    try {
+      this.secretStatus = await probeCredentialSecret({
+        context: store.state.context,
+        namespace: this.secretNamespace,
+        name: d.secretName,
+        key: d.secretKey,
+      });
+    } finally {
+      this.secretBusy = false;
+    }
+  }
+
+  private async storeClusterSecret(): Promise<void> {
+    const d = designer.draft;
+    const val = this.secretValue;
+    this.secretBusy = true;
+    this.secretNotice = null;
+    try {
+      const res = await saveCredentialSecret({
+        context: store.state.context,
+        namespace: this.secretNamespace,
+        name: d.secretName,
+        key: d.secretKey,
+        value: val,
+      });
+      if (res.ok) {
+        this.secretValue = "";
+        this.secretStatus = res.status ?? null;
+        this.secretNotice = `Saved ax.io/credential=true Secret ${this.secretNamespace}/${d.secretName} via stdin.`;
+      } else {
+        this.secretNotice = res.error ?? "Failed to save Secret.";
+      }
+    } finally {
+      this.secretBusy = false;
+    }
+  }
+
+  private renderGatewaySecretPanel(d: Draft): TemplateResult {
+    const ctx = store.state.context;
+    const local = isLocalContext(ctx);
+    const st = this.secretStatus;
+    return html`
+      <div
+        class="secret-box"
+        role="region"
+        aria-label="Kubernetes Gateway Credential Secret"
+      >
+        <div class="row" style="justify-content:space-between;gap:6px">
+          <span class="caption"
+            >Cluster Secret (<code>ax.io/credential=true</code>, piped via
+            stdin)</span
+          >
+          ${
+            !local
+              ? html`<button
+                  class="btn small"
+                  type="button"
+                  ?disabled=${this.secretBusy || !d.secretName || !d.secretKey}
+                  @click=${() => void this.checkClusterSecret()}
+                >
+                  Check key
+                </button>`
+              : nothing
+          }
+        </div>
+        ${
+          local
+            ? html`<div class="caption faint">
+                Active context is <code>${ctx}</code> (substrate-local). Switch
+                to a Kubernetes context (Kind, GKE, Crostini) to probe or store
+                Gateway Secrets.
+              </div>`
+            : html`
+                <div class="ds-row" style="gap:6px">
+                  <input
+                    class="input mono"
+                    style="max-width:130px"
+                    aria-label="Secret namespace"
+                    .value=${this.secretNamespace}
+                    placeholder=${DEFAULT_SECRET_NAMESPACE}
+                    ?disabled=${this.secretBusy}
+                    @input=${(e: Event) => {
+                      this.secretNamespace = (
+                        e.target as HTMLInputElement
+                      ).value;
+                      this.secretStatus = null;
+                    }}
+                  />
+                  <input
+                    class="input mono"
+                    type="password"
+                    autocomplete="off"
+                    aria-label="Credential secret value"
+                    .value=${this.secretValue}
+                    placeholder="Paste API key (piped via stdin, never echoed)"
+                    ?disabled=${this.secretBusy}
+                    @input=${(e: Event) => {
+                      this.secretValue = (e.target as HTMLInputElement).value;
+                    }}
+                  />
+                  <button
+                    class="btn small primary"
+                    type="button"
+                    ?disabled=${
+                      this.secretBusy ||
+                      !d.secretName ||
+                      !d.secretKey ||
+                      !this.secretValue
+                    }
+                    @click=${() => void this.storeClusterSecret()}
+                  >
+                    Save Secret
+                  </button>
+                </div>
+                ${
+                  st
+                    ? html`<div class="caption" aria-live="polite">
+                        ${
+                          st.error
+                            ? html`<span style="color:var(--danger)"
+                                >${st.error}</span
+                              >`
+                            : st.hasKey
+                              ? html`<span style="color:var(--green)"
+                                  >Ready:
+                                  <code>${st.namespace}/${st.name}</code> has
+                                  key <code>${st.key}</code> (<code
+                                    class="selectable"
+                                    >${st.credentialUri}</code
+                                  >)</span
+                                >`
+                              : st.exists
+                                ? html`<span style="color:var(--warn)"
+                                    >Secret exists (keys:
+                                    ${st.keys.join(", ") || "none"}), missing
+                                    <code>${st.key}</code></span
+                                  >`
+                                : html`<span style="color:var(--warn)"
+                                    >Secret
+                                    <code>${st.namespace}/${st.name}</code> not
+                                    found on <code>${st.context}</code></span
+                                  >`
+                        }
+                      </div>`
+                    : nothing
+                }
+                ${
+                  this.secretNotice
+                    ? html`<div class="caption faint" aria-live="polite">
+                        ${this.secretNotice}
+                      </div>`
+                    : nothing
+                }
+              `
+        }
+      </div>
     `;
   }
 
@@ -1118,6 +1297,7 @@ export class AxDesigner extends LitElement {
                     />
                   </div>`,
                 )}
+                ${this.renderGatewaySecretPanel(d)}
                 ${this.renderField(
                   "Max tokens",
                   html`<input
@@ -1698,6 +1878,15 @@ ${lines.map(this.renderYamlLine)}</pre>`
         color: var(--on-surface-variant);
         text-align: right;
         padding-top: 6px;
+      }
+      .secret-box {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        margin-top: 6px;
+        padding: 8px 10px;
+        border-radius: var(--radius-s);
+        background: var(--surface-container);
       }
       .ds-row {
         display: flex;

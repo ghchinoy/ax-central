@@ -26,6 +26,10 @@ import {
 } from "./model/designer";
 import { moveTask } from "./model/move";
 import { isSafeResourceName, shortImage } from "./model/resources";
+import {
+  DEFAULT_SECRET_NAMESPACE,
+  probeCredentialSecret,
+} from "./model/secrets";
 import { SECTIONS, type Section, type Store } from "./model/store";
 import { ToolError } from "./registry";
 
@@ -106,6 +110,7 @@ export const TOOL_GROUPS: Record<string, string[]> = {
     "resolve_image_digest",
     "list_clusters",
     "preflight_cluster_install",
+    "check_credential_secret",
     "manage_local_stack",
     "run_hero_demo",
     "check_prerequisites",
@@ -872,6 +877,68 @@ export const TOOLS: ToolDef[] = [
           context,
           can_install: !preflightBlocks(checks),
           checks,
+        },
+      };
+    },
+  },
+  {
+    name: "check_credential_secret",
+    description:
+      "Check whether a Kubernetes Gateway credential Secret exists and contains the expected key (reads key names only; secret values never leave the cluster). Read-only.",
+    inputSchema: obj(
+      {
+        name: {
+          type: "string",
+          description: "Kubernetes Secret name (RFC-1123 label).",
+        },
+        key: {
+          type: "string",
+          description: "Key name inside the Secret (e.g. api-key).",
+        },
+        namespace: {
+          type: "string",
+          description: `Kubernetes namespace (defaults to "${DEFAULT_SECRET_NAMESPACE}").`,
+        },
+        context: {
+          type: "string",
+          description:
+            "Optional Kubernetes context (defaults to the active context).",
+        },
+      },
+      ["name", "key"],
+    ),
+    readOnly: true,
+    async execute(args, ctx) {
+      const name = reqStr(args, "name");
+      const key = reqStr(args, "key");
+      const namespace =
+        typeof args.namespace === "string" && args.namespace.trim()
+          ? args.namespace.trim()
+          : DEFAULT_SECRET_NAMESPACE;
+      const context =
+        typeof args.context === "string" && args.context.trim()
+          ? args.context.trim()
+          : ctx.store.state.context;
+      const status = await probeCredentialSecret({
+        context,
+        namespace,
+        name,
+        key,
+      });
+      if (status.error) {
+        throw new ToolError(status.error);
+      }
+      return {
+        result: {
+          context: status.context,
+          namespace: status.namespace,
+          name: status.name,
+          key: status.key,
+          exists: status.exists,
+          has_key: status.hasKey,
+          keys: status.keys,
+          credential_uri: status.credentialUri,
+          is_local: Boolean(status.isLocal),
         },
       };
     },

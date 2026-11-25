@@ -63,7 +63,15 @@ import {
   type ModelContextLike,
   type RegisteredTool,
 } from "./registry";
+import {
+  buildCredentialSecretJSON,
+  parseSecretKeysOutput,
+  probeCredentialSecret,
+  saveCredentialSecret,
+  validateCredentialSecretInput,
+} from "./model/secrets";
 import { parseTraceJSONLToFrames, store } from "./model/store";
+import { TOOLS } from "./tools";
 import { parseJaegerTraceJSON, parseSlogFields } from "./views/task-logs";
 
 beforeEach(() => {
@@ -451,6 +459,141 @@ describe("resources & designer models", () => {
     expect(imageRefProblem("ghcr.io/x/y:v1")).toBeNull();
     expect(imageRefProblem("--context=evil")).not.toBeNull();
     expect(imageRefProblem("img; rm -rf /")).not.toBeNull();
+  });
+
+  it("validates, builds, probes, and pipes Kubernetes Gateway credential Secrets via stdin", async () => {
+    expect(
+      validateCredentialSecretInput({
+        context: "kind-ax-local",
+        namespace: "ax-system",
+        name: "gemini-key",
+        key: "api-key",
+        value: "sk-test-123",
+      }),
+    ).toBeNull();
+    expect(
+      validateCredentialSecretInput({
+        context: "--evil",
+        name: "gemini-key",
+        key: "api-key",
+      }),
+    ).toContain("Invalid context");
+    expect(
+      validateCredentialSecretInput({
+        name: "Bad_Name",
+        key: "api-key",
+      }),
+    ).toContain("Invalid secret name");
+    expect(
+      validateCredentialSecretInput(
+        { name: "gemini-key", key: "api-key", value: "" },
+        true,
+      ),
+    ).toContain("required");
+
+    const json = JSON.parse(
+      buildCredentialSecretJSON({
+        namespace: "ax-system",
+        name: "gemini-key",
+        key: "api-key",
+        value: "sk-live-secret-value",
+      }),
+    ) as {
+      kind: string;
+      type: string;
+      metadata: {
+        name: string;
+        namespace: string;
+        labels: Record<string, string>;
+      };
+      data: Record<string, string>;
+    };
+    expect(json.kind).toBe("Secret");
+    expect(json.type).toBe("Opaque");
+    expect(json.metadata.labels["ax.io/credential"]).toBe("true");
+    expect(atob(json.data["api-key"])).toBe("sk-live-secret-value");
+
+    expect(parseSecretKeysOutput("found\napi-key\nother\n", "api-key")).toEqual(
+      {
+        exists: true,
+        hasKey: true,
+        keys: ["api-key", "other"],
+      },
+    );
+    expect(parseSecretKeysOutput("found\nother\n", "api-key")).toEqual({
+      exists: true,
+      hasKey: false,
+      keys: ["other"],
+    });
+    expect(parseSecretKeysOutput("", "api-key")).toEqual({
+      exists: false,
+      hasKey: false,
+      keys: [],
+    });
+
+    // Verify saveCredentialSecret pipes the value strictly via stdin (never argv).
+    const calls: { program: string; args: string[]; stdin?: string }[] = [];
+    const origRun = window.studio.run;
+    window.studio.run = async (req) => {
+      calls.push({ program: req.program, args: req.args, stdin: req.stdin });
+      return origRun(req);
+    };
+    try {
+      const saved = await saveCredentialSecret({
+        context: "kind-ax-local",
+        namespace: "ax-system",
+        name: "gemini-key",
+        key: "api-key",
+        value: "top-secret-token-xyz",
+      });
+      expect(saved.ok).toBe(true);
+      expect(saved.status?.hasKey).toBe(true);
+      expect(saved.status?.credentialUri).toBe(
+        "ate-secret://k8s.io/default/ax-system/gemini-key/api-key",
+      );
+      const applyCall = calls.find(
+        (c) => c.program === "kubectl" && c.args.includes("apply"),
+      );
+      expect(applyCall).toBeDefined();
+      expect(applyCall!.args.join(" ")).not.toContain("top-secret-token-xyz");
+      expect(applyCall!.stdin).toContain('"ax.io/credential":"true"');
+
+      // Local substrate-local context returns a friendly isLocal response.
+      const localProbe = await probeCredentialSecret({
+        context: "local",
+        name: "gemini-key",
+        key: "api-key",
+      });
+      expect(localProbe.isLocal).toBe(true);
+      expect(localProbe.error).toBeUndefined();
+
+      // Verify read-only WebMCP check_credential_secret tool.
+      const host = new ToolHost((signal) => ({
+        store,
+        designer,
+        clusters,
+        signal,
+      }));
+      await host.register(TOOLS);
+      const toolOut = await host.call(
+        "check_credential_secret",
+        {
+          context: "kind-ax-local",
+          namespace: "ax-system",
+          name: "gemini-key",
+          key: "api-key",
+        },
+        new AbortController().signal,
+      );
+      expect(toolOut).toMatchObject({
+        exists: true,
+        has_key: true,
+        credential_uri:
+          "ate-secret://k8s.io/default/ax-system/gemini-key/api-key",
+      });
+    } finally {
+      window.studio.run = origRun;
+    }
   });
 
   it("renders identical YAML lines in read-only designer view and raw edit mode", async () => {
