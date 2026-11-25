@@ -224,7 +224,7 @@ describe("resources & designer models", () => {
 
     const agyGated = template("antigravity-dgem-gate");
     expect(agyGated.image).toContain(
-      "ghcr.io/ghchinoy/ax-images/agy-agent@sha256:bd8792bf",
+      "ghcr.io/ghchinoy/ax-images/agy-agent@sha256:2d1ae9d2",
     );
     const agyGatedYaml = generate(agyGated, true);
     expect(agyGatedYaml).toContain("safetyGate: true");
@@ -243,7 +243,7 @@ describe("resources & designer models", () => {
     expect(heroStarterYaml).toContain("math_utils.py");
     expect(heroStarterYaml).toContain("subtract(a, b)");
     expect(heroStarter.image).toContain(
-      "ghcr.io/ghchinoy/ax-images/genkit-runner@sha256:f5d74204",
+      "ghcr.io/ghchinoy/ax-images/genkit-runner@sha256:2620b7bc",
     );
 
     const heroCustom = template("hero-demo-custom");
@@ -798,9 +798,9 @@ describe("WebMCP ToolHost & AX tools", () => {
       },
       sig,
     );
-    expect(resolvedDig.digest).toContain("sha256:191df51f421c45093f2e8f07");
+    expect(resolvedDig.digest).toContain("sha256:e77bf4499b3548abaa4801a4");
     expect(designer.draft.image).toContain(
-      "ghcr.io/ghchinoy/ax-images/dgem-agent@sha256:191df51f421c45093f2e8f07",
+      "ghcr.io/ghchinoy/ax-images/dgem-agent@sha256:e77bf4499b3548abaa4801a4",
     );
     await el.host.call(
       "remove_image_registry",

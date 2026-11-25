@@ -54,13 +54,13 @@ export const REGISTRIES_KEY = "ax-central.registries";
 export const GHCHINOY_AX_IMAGES = "ghcr.io/ghchinoy/ax-images";
 export const GHCHINOY_IMAGE_DIGESTS = {
   "agy-agent":
-    "sha256:bd8792bf378a2ba2d8953934ed3a2b195d8b9c9063a4f58a31f1b5ebea75e47f",
+    "sha256:2d1ae9d22688ab26926ce808c9231e8c07b019c15b0f530d5616a50956dc63a1",
   "dgem-agent":
-    "sha256:191df51f421c45093f2e8f07d00a2237293be12ff464a1aca0d0b4a43258ccb3",
+    "sha256:e77bf4499b3548abaa4801a4ad80c1c1bf8ed3bbc7f85c245c0e4e05baaae5e1",
   "genkit-runner":
-    "sha256:f5d7420468b7f1dec8304d7efa1dbe0ca2bb86a1e552181f823630412e01ee06",
+    "sha256:2620b7bc3dc328147b034c1210c29999589eef977e05bd027529e5d882fc4fcd",
   "swarm-agent":
-    "sha256:e8e2e27f95855314e08f3f06bf224895599bbdfed6d467116855d2ce2a7e64bc",
+    "sha256:f23d5fda508774936a323c6c15fb937957cbccf5865bc989bb325c7854b36ea5",
 };
 
 export interface KeyValue {
@@ -209,6 +209,8 @@ function blank(): Draft {
 /** Official pure agent images (github.com/agentexecutor/images, google/ax#662). */
 export const AGENTEXECUTOR_IMAGES = "ghcr.io/agentexecutor";
 export const AGENTEXECUTOR_IMAGE_DIGESTS = {
+  "agy-cli":
+    "sha256:13c1957d2e790c3a981de08e3996acc268e855f2e6a79b5e931ec62e8b54c2a5",
   antigravity:
     "sha256:0ccd91d03f996c375d6d391dc20106102187f15210a0016212b6721cd8044078",
 };
@@ -246,6 +248,12 @@ export const DEFAULT_REGISTRIES: ImageRegistry[] = [
     repoUrl: "https://github.com/agentexecutor/images",
     builtIn: true,
     images: [
+      {
+        name: "agy-cli",
+        digest: AGENTEXECUTOR_IMAGE_DIGESTS["agy-cli"],
+        description:
+          "Official Antigravity CLI starter image (v0.0.0-rc.3, google/ax#763) with ax-launcher; pair with --runner-volume-image",
+      },
       {
         name: "antigravity",
         digest: AGENTEXECUTOR_IMAGE_DIGESTS.antigravity,
