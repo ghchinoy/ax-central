@@ -2,7 +2,7 @@
 
 Welcome to the documentation for **AX Central**, a cross-platform desktop control plane (macOS, Linux, and Windows) for [AX](https://github.com/google/ax) and [Agent Substrate](https://github.com/agent-substrate/substrate).
 
-AX Central is inspired by [@rakyll](https://github.com/rakyll)'s proposal in [google/ax#543](https://github.com/google/ax/issues/543) and prototype at [rakyll/ax-studio](https://github.com/rakyll/ax-studio), and is developed as part of the [AX Experiments](https://github.com/ghchinoy/ax-experiments) suite.
+AX Central is inspired by [@rakyll](https://github.com/rakyll)'s proposal in [google/ax#543](https://github.com/google/ax/issues/543) and the official [AX Studio](https://github.com/agentexecutor/studio) (`ax studio`), and is developed as part of the [AX Experiments](https://github.com/ghchinoy/ax-experiments) suite.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="screenshots/activity-dark.webp">
@@ -29,10 +29,11 @@ Step-by-step recipes for specific operational workflows:
 
 Factual tables and schemas for lookup while building or scripting:
 
-* **[CLI, Shortcuts, and WebMCP Tools Reference](reference/cli-and-webmcp-tools.md)**: Complete reference for all 23 WebMCP tools, `Makefile` targets, `hack/doctor.sh --json` output schema, and macOS keyboard shortcuts.
+* **[CLI, Shortcuts, and WebMCP Tools Reference](reference/cli-and-webmcp-tools.md)**: Complete reference for all 24 WebMCP tools, `Makefile` targets, `hack/doctor.sh --json` output schema, and macOS keyboard shortcuts.
 
 ## 4. Explanation (Understanding-Oriented)
 
 Architectural context and design trade-offs behind AX Central:
 
-* **[System Architecture and Dual-Substrate Design](explanation/architecture.md)**: How the Wails v2 Go subprocess bridge (`shell.go`, `Shell.Pipe`), `docker-shim.sh` digest preservation, Lit 3 Luminous design tokens, `TerminalBackend`, OpenTelemetry + Jaeger v2 trace waterfalls, and the glidepath between Apple `container` (`ate-local`) and Kubernetes `kind` (`gVisor` WorkerPool) fit together.
+* **[System Architecture and Dual-Substrate Design](explanation/architecture.md)**: How the Wails v2 Go subprocess bridge (`shell.go`, `Shell.Pipe`), `docker-shim.sh` digest preservation, Lit 3 Luminous design tokens, `TerminalBackend`, OpenTelemetry + Jaeger v2 trace waterfalls, and the glidepath between Apple `container` (`ate-local` / `substrate-local`) and Kubernetes `kind` (`gVisor` WorkerPool) fit together.
+* **[AX Central vs. AX Studio (`agentexecutor/studio`)](explanation/ax-studio-comparison.md)**: Code-level comparison against the official single-cluster [AX Studio](https://github.com/agentexecutor/studio) (`ax studio`), feature overlap vs. exclusive multi-cluster / swarm / WebMCP capabilities, and AX Central's direction as an external multi-agent orchestrator workbench.
