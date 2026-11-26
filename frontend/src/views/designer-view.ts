@@ -20,12 +20,16 @@ import { type IconName, icon } from "../icons";
 import {
   type ConfigMode,
   type Draft,
+  GATEWAY_PRESETS,
+  type GatewayMode,
+  type GatewayRuleKind,
   type KeyValue,
   TEMPLATES,
   type WorkspaceMode,
   canApply,
   cpuString,
   designer,
+  effectiveGatewayMode,
   formatEnv,
   generate,
   isSecret,
@@ -35,6 +39,7 @@ import {
   tokenizeYAML,
   uid,
   validateEnvName,
+  validateGatewayHostname,
   withID,
 } from "../model/designer";
 import {
@@ -624,6 +629,297 @@ export class AxDesigner extends LitElement {
     );
   }
 
+  private renderGatewaySection(d: Draft): TemplateResult {
+    const s = store.state;
+    const mode = effectiveGatewayMode(d);
+    const rules = d.gatewayRules ?? [];
+    const activePresetIDs = new Set(
+      rules.map((r) => r.presetId).filter(Boolean),
+    );
+    const hasSecretRule = rules.some((r) => Boolean(r.credentialUri));
+    return this.renderSection(
+      "lock",
+      "var(--green)",
+      "Gateway",
+      mode === "none"
+        ? html`<p class="muted ds-hint">
+            No egress gateway attached. Attach a Gateway to allowlist outbound
+            HTTPS hosts and inject API keys outside the sandbox.
+          </p>`
+        : mode === "existing"
+          ? html`
+              ${this.renderField(
+                "Gateway",
+                html`<div class="col" style="gap:6px">
+                  ${
+                    s.gateways.length > 0
+                      ? html`<select
+                          class="select"
+                          aria-label="Existing gateway"
+                          .value=${d.gateway ?? ""}
+                          @change=${(e: Event) =>
+                            designer.set({
+                              gateway: (e.target as HTMLSelectElement).value,
+                            })}
+                        >
+                          <option value="">Choose an existing gateway…</option>
+                          ${s.gateways.map(
+                            (g) => html`
+                              <option
+                                value=${g.name}
+                                ?selected=${g.name === d.gateway}
+                              >
+                                ${g.name}
+                                (${
+                                  g.hosts.slice(0, 2).join(", ") || "no hosts"
+                                }${
+                                  g.hosts.length > 2
+                                    ? ` +${g.hosts.length - 2}`
+                                    : ""
+                                })
+                              </option>
+                            `,
+                          )}
+                        </select>`
+                      : nothing
+                  }
+                  <input
+                    class="input mono"
+                    aria-label="Gateway name"
+                    .value=${d.gateway ?? ""}
+                    placeholder="Existing gateway name (spec.gateway.name)"
+                    spellcheck="false"
+                    @input=${(e: Event) =>
+                      designer.set({
+                        gateway: (e.target as HTMLInputElement).value,
+                      })}
+                  />
+                </div>`,
+              )}
+            `
+          : html`
+              ${this.renderField(
+                "Name",
+                html`<input
+                  class="input mono"
+                  aria-label="New gateway name"
+                  .value=${d.gatewayName ?? "egress-gw"}
+                  spellcheck="false"
+                  @input=${(e: Event) =>
+                    designer.set({
+                      gatewayName: (e.target as HTMLInputElement).value,
+                    })}
+                />`,
+                validateLabel(d.gatewayName ?? ""),
+              )}
+              <div
+                class="gw-presets"
+                role="group"
+                aria-label="Gateway host presets"
+              >
+                <span class="caption faint">Presets:</span>
+                ${GATEWAY_PRESETS.map((p) => {
+                  const on = activePresetIDs.has(p.id);
+                  return html`
+                    <button
+                      type="button"
+                      class="btn small ${on ? "primary" : ""}"
+                      aria-pressed=${on ? "true" : "false"}
+                      title="${p.hosts.join(", ")}${p.header ? ` · injects ${p.header}` : ""}"
+                      @click=${() =>
+                        designer.toggleGatewayPreset(
+                          p.id,
+                          this.secretNamespace,
+                        )}
+                    >
+                      ${on ? icon("check", 11) : "+"} ${p.label}
+                    </button>
+                  `;
+                })}
+              </div>
+              <div class="col" style="gap:8px;margin-top:6px">
+                ${rules.map((r, idx) => {
+                  const hostVal = r.hosts.join(", ");
+                  const hostErr =
+                    r.hosts
+                      .map((h) => h.trim())
+                      .filter(Boolean)
+                      .map(validateGatewayHostname)
+                      .find(Boolean) ?? null;
+                  return html`
+                    <div class="ds-file">
+                      <div class="ds-row">
+                        <select
+                          class="select mono"
+                          style="max-width:140px"
+                          aria-label="Rule ${idx + 1} protocol"
+                          .value=${r.kind}
+                          @change=${(e: Event) =>
+                            designer.updateGatewayRule(r.id, {
+                              kind: (e.target as HTMLSelectElement)
+                                .value as GatewayRuleKind,
+                            })}
+                        >
+                          <option value="https">https (MITM)</option>
+                          <option value="http">http</option>
+                          <option value="tlsPassthrough">tlsPassthrough</option>
+                        </select>
+                        <input
+                          class="input mono"
+                          aria-label="Rule ${idx + 1} hostnames"
+                          .value=${hostVal}
+                          placeholder="generativelanguage.googleapis.com, api.github.com"
+                          spellcheck="false"
+                          @input=${(e: Event) => {
+                            const raw = (e.target as HTMLInputElement).value;
+                            designer.updateGatewayRule(r.id, {
+                              hosts: raw
+                                .split(",")
+                                .map((s) => s.trim())
+                                .filter(Boolean),
+                            });
+                          }}
+                        />
+                        <button
+                          type="button"
+                          class="btn ghost small icon danger"
+                          title="Remove rule"
+                          aria-label="Remove gateway rule ${idx + 1}"
+                          @click=${() => designer.removeGatewayRule(r.id)}
+                        >
+                          ${icon("trash", 12)}
+                        </button>
+                      </div>
+                      ${
+                        hostErr
+                          ? html`<span class="caption ds-error"
+                              >${hostErr}</span
+                            >`
+                          : nothing
+                      }
+                      ${
+                        r.kind !== "tlsPassthrough"
+                          ? html`
+                              <div class="ds-row">
+                                <input
+                                  class="input mono"
+                                  style="max-width:165px"
+                                  aria-label="Rule ${idx + 1} header"
+                                  .value=${r.header ?? ""}
+                                  placeholder="Header (e.g. x-goog-api-key)"
+                                  spellcheck="false"
+                                  @input=${(e: Event) =>
+                                    designer.updateGatewayRule(r.id, {
+                                      header: (e.target as HTMLInputElement)
+                                        .value,
+                                    })}
+                                />
+                                <input
+                                  class="input mono"
+                                  style="max-width:105px"
+                                  aria-label="Rule ${idx + 1} prefix"
+                                  .value=${r.prefix ?? ""}
+                                  placeholder="Prefix (Bearer )"
+                                  spellcheck="false"
+                                  @input=${(e: Event) =>
+                                    designer.updateGatewayRule(r.id, {
+                                      prefix: (e.target as HTMLInputElement)
+                                        .value,
+                                    })}
+                                />
+                                <input
+                                  class="input mono"
+                                  aria-label="Rule ${idx + 1} credential URI"
+                                  .value=${r.credentialUri ?? ""}
+                                  placeholder="ate-secret://k8s.io/default/ax-system/secret/key"
+                                  spellcheck="false"
+                                  @input=${(e: Event) =>
+                                    designer.updateGatewayRule(r.id, {
+                                      credentialUri: (
+                                        e.target as HTMLInputElement
+                                      ).value,
+                                    })}
+                                />
+                              </div>
+                            `
+                          : nothing
+                      }
+                    </div>
+                  `;
+                })}
+                <button
+                  type="button"
+                  class="btn ghost small ds-add"
+                  @click=${() => designer.addGatewayRule()}
+                >
+                  + Add egress rule
+                </button>
+              </div>
+              ${
+                hasSecretRule
+                  ? html`
+                      <div style="margin-top:8px">
+                        <div class="ds-row" style="margin-bottom:4px">
+                          <input
+                            class="input mono"
+                            aria-label="Gateway secret name"
+                            .value=${d.secretName}
+                            placeholder="Secret name (e.g. gemini-api-key)"
+                            spellcheck="false"
+                            @input=${(e: Event) => {
+                              this.secretStatus = null;
+                              designer.set({
+                                secretName: (e.target as HTMLInputElement)
+                                  .value,
+                              });
+                            }}
+                          />
+                          <input
+                            class="input mono"
+                            style="max-width:150px"
+                            aria-label="Gateway secret key"
+                            .value=${d.secretKey}
+                            placeholder="Key (e.g. api-key)"
+                            spellcheck="false"
+                            @input=${(e: Event) => {
+                              this.secretStatus = null;
+                              designer.set({
+                                secretKey: (e.target as HTMLInputElement).value,
+                              });
+                            }}
+                          />
+                        </div>
+                        ${this.renderGatewaySecretPanel(d)}
+                      </div>
+                    `
+                  : nothing
+              }
+            `,
+      html`
+        <div class="segmented" role="group" aria-label="Gateway mode">
+          ${(["none", "existing", "new"] as GatewayMode[]).map(
+            (m) => html`
+              <button
+                type="button"
+                class=${mode === m ? "on" : ""}
+                @click=${() =>
+                  designer.set({
+                    gatewayMode: m,
+                    ...(m === "none" ? { gateway: "" } : {}),
+                    ...(m === "new" && !d.gatewayName
+                      ? { gatewayName: "egress-gw" }
+                      : {}),
+                  })}
+              >
+                ${m === "none" ? "None" : m === "existing" ? "Existing" : "New"}
+              </button>
+            `,
+          )}
+        </div>
+      `,
+    );
+  }
+
   private renderNewWorkspace(d: Draft): TemplateResult {
     return html`
       ${this.renderField(
@@ -1069,20 +1365,6 @@ export class AxDesigner extends LitElement {
                   })}
               />`,
             )}
-            ${this.renderField(
-              "Gateway",
-              html`<input
-                class="input mono"
-                aria-label="Gateway"
-                .value=${d.gateway ?? ""}
-                placeholder="Optional egress gateway name (spec.gateway.name)"
-                spellcheck="false"
-                @input=${(e: Event) =>
-                  designer.set({
-                    gateway: (e.target as HTMLInputElement).value,
-                  })}
-              />`,
-            )}
           `,
         )}
         ${this.renderEnvironment(d.env)}
@@ -1226,6 +1508,7 @@ export class AxDesigner extends LitElement {
             </div>
           `,
         )}
+        ${this.renderGatewaySection(d)}
         ${this.renderSection(
           "cpu",
           "var(--teal)",
@@ -1888,6 +2171,13 @@ ${lines.map(this.renderYamlLine)}</pre>`
         border-radius: var(--radius-s);
         background: var(--surface-container);
       }
+      .gw-presets {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 6px;
+        margin-top: 4px;
+      }
       .ds-row {
         display: flex;
         gap: 6px;
@@ -2138,7 +2428,6 @@ ${lines.map(this.renderYamlLine)}</pre>`
         padding: 10px 10px 16px 12px;
         text-align: right;
         color: var(--text-3);
-        opacity: 0.7;
         user-select: none;
         border-right: 1px solid var(--border);
         background: var(--surface-bright);

@@ -865,6 +865,53 @@ describe("WebMCP ToolHost & AX tools", () => {
     expect(results.violations).toEqual([]);
   });
 
+  it("builds a multi-document Gateway + Task manifest via inline presets in <ax-designer>", async () => {
+    store.set({ context: "kind-ax-local", atespace: "default" });
+    designer.load("simple");
+    designer.toggleGatewayPreset("gemini", "ax-system");
+    designer.toggleGatewayPreset("pypi", "ax-system");
+
+    const yaml = generate(designer.draft, true);
+    expect(yaml).toContain("kind: Gateway");
+    expect(yaml).toContain('name: "egress-gw"');
+    expect(yaml).toContain('- "generativelanguage.googleapis.com"');
+    expect(yaml).toContain('header: "x-goog-api-key"');
+    expect(yaml).toContain(
+      'credentialUri: "ate-secret://k8s.io/default/ax-system/gemini-api-key/api-key"',
+    );
+    expect(yaml).toContain('- "pypi.org"');
+    expect(yaml).toContain('gateway:\n    name: "egress-gw"');
+    expect(canApply(designer.draft)).toBe(true);
+
+    // Invalid uppercase hostname fails validation cleanly
+    const badRule = designer.draft.gatewayRules![0]!;
+    designer.updateGatewayRule(badRule.id, { hosts: ["INVALID..HOST"] });
+    expect(
+      issues(designer.draft).some((i) => i.text.includes("Gateway rule")),
+    ).toBe(true);
+    designer.updateGatewayRule(badRule.id, {
+      hosts: ["generativelanguage.googleapis.com"],
+    });
+
+    document.documentElement.dataset.theme = "light";
+    const el = document.createElement("ax-designer");
+    document.body.append(el);
+    await (el as unknown as { updateComplete: Promise<boolean> })
+      .updateComplete;
+
+    const root = el.shadowRoot!;
+    expect(root.textContent).toContain("Gateway");
+    expect(root.textContent).toContain("Gemini API");
+    expect(
+      root.querySelector('[aria-label="Kubernetes Gateway Credential Secret"]'),
+    ).not.toBeNull();
+
+    const axeRes = await axe.run(document.body, {
+      runOnly: ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"],
+    });
+    expect(axeRes.violations).toEqual([]);
+  });
+
   it("walks through the full E2E debian:12 flow on local (ate-local): Clusters -> Deploy -> Activity -> Logs -> Map -> Terminal -> WebMCP", async () => {
     const el = document.createElement("ax-central") as AxCentral;
     document.body.append(el);

@@ -87,6 +87,105 @@ export interface ServerDraft {
   args?: string[];
 }
 
+export type GatewayMode = "none" | "existing" | "new";
+export type GatewayRuleKind = "https" | "http" | "tlsPassthrough";
+
+export interface GatewayRuleDraft {
+  id: number;
+  kind: GatewayRuleKind;
+  hosts: string[];
+  header?: string;
+  prefix?: string;
+  credentialUri?: string;
+  presetId?: string;
+}
+
+export interface GatewayPreset {
+  id: string;
+  label: string;
+  kind: GatewayRuleKind;
+  hosts: string[];
+  header?: string;
+  prefix?: string;
+  secretName?: string;
+  secretKey?: string;
+}
+
+export const GATEWAY_PRESETS: GatewayPreset[] = [
+  {
+    id: "gemini",
+    label: "Gemini API",
+    kind: "https",
+    hosts: ["generativelanguage.googleapis.com"],
+    header: "x-goog-api-key",
+    secretName: "gemini-api-key",
+    secretKey: "api-key",
+  },
+  {
+    id: "anthropic",
+    label: "Anthropic API",
+    kind: "https",
+    hosts: ["api.anthropic.com"],
+    header: "x-api-key",
+    secretName: "anthropic-api-secret",
+    secretKey: "ANTHROPIC_API_KEY",
+  },
+  {
+    id: "openai",
+    label: "OpenAI API",
+    kind: "https",
+    hosts: ["api.openai.com"],
+    header: "Authorization",
+    prefix: "Bearer ",
+    secretName: "openai-api-key",
+    secretKey: "api-key",
+  },
+  {
+    id: "github",
+    label: "GitHub",
+    kind: "https",
+    hosts: ["github.com", "api.github.com"],
+    header: "Authorization",
+    prefix: "Bearer ",
+    secretName: "github-token",
+    secretKey: "token",
+  },
+  {
+    id: "pypi",
+    label: "PyPI",
+    kind: "https",
+    hosts: ["pypi.org", "files.pythonhosted.org"],
+  },
+  {
+    id: "npm",
+    label: "npm",
+    kind: "https",
+    hosts: ["registry.npmjs.org"],
+  },
+];
+
+export function effectiveGatewayMode(d: Draft): GatewayMode {
+  if (d.gatewayMode) return d.gatewayMode;
+  return d.gateway?.trim() ? "existing" : "none";
+}
+
+export function validateGatewayHostname(raw: string): string | null {
+  const h = raw.trim();
+  if (!h) return "hostname is required";
+  if (h === "*") return null;
+  const candidate = h.startsWith("*.") ? h.slice(2) : h;
+  if (!candidate || candidate.endsWith(".") || candidate.includes("..")) {
+    return `invalid hostname "${h}"`;
+  }
+  const labels = candidate.split(".");
+  for (const label of labels) {
+    if (!/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(label)) {
+      return `invalid DNS label in "${h}" (must be lowercase RFC 1123)`;
+    }
+  }
+  return null;
+}
+
 export interface Draft {
   name: string;
   atespace: string;
@@ -94,6 +193,9 @@ export interface Draft {
   command: string;
   goal?: string;
   gateway?: string;
+  gatewayMode?: GatewayMode;
+  gatewayName?: string;
+  gatewayRules?: GatewayRuleDraft[];
   env: KeyValue[];
   cpu: number;
   memoryMi: number;
@@ -190,6 +292,8 @@ function blank(): Draft {
     workspaceMode: "none",
     existingWorkspace: "",
     wsName: "my-workspace",
+    gatewayName: "egress-gw",
+    gatewayRules: [],
     repos: [],
     files: [],
     servers: [],
@@ -944,6 +1048,39 @@ export function issues(d: Draft): Issue[] {
   }
   if (d.includeModel && (e = validateLabel(d.modelName)))
     err(`Model name: ${e}`);
+  const gwMode = effectiveGatewayMode(d);
+  if (gwMode === "existing" && !d.gateway?.trim()) {
+    warn("Gateway: choose an existing gateway or switch mode to None / New");
+  }
+  if (gwMode === "new") {
+    if ((e = validateLabel(d.gatewayName ?? ""))) {
+      err(`Gateway name: ${e}`);
+    }
+    const rules = d.gatewayRules ?? [];
+    if (rules.length === 0) {
+      err("Gateway: add at least one host allowlist rule or preset");
+    }
+    for (const r of rules) {
+      const cleanHosts = r.hosts.map((h) => h.trim()).filter(Boolean);
+      if (cleanHosts.length === 0) {
+        err("Gateway rule: enter at least one hostname");
+      } else {
+        for (const h of cleanHosts) {
+          const he = validateGatewayHostname(h);
+          if (he) err(`Gateway rule: ${he}`);
+        }
+      }
+      if (
+        r.kind !== "tlsPassthrough" &&
+        r.header?.trim() &&
+        !r.credentialUri?.trim()
+      ) {
+        warn(
+          `Gateway rule (${r.header}): set a credentialUri (ate-secret://...) or clear the header`,
+        );
+      }
+    }
+  }
   if (d.env.some((kv) => !kv.key && kv.value)) warn("An env var has no name");
   if (d.env.some((kv) => validateEnvName(kv.key, d.env)))
     err("Environment: fix the highlighted names");
@@ -1092,6 +1229,38 @@ export function generate(d: Draft, redact = false): string {
     docs.push(y);
   }
 
+  const gwMode = effectiveGatewayMode(d);
+  if (gwMode === "new" && d.gatewayName?.trim()) {
+    let g = `apiVersion: ax.io/v1alpha1\nkind: Gateway\nmetadata:\n  name: ${q(d.gatewayName.trim())}${ates}\nspec:`;
+    const rules = (d.gatewayRules ?? []).filter(
+      (r) => r.hosts.map((h) => h.trim()).filter(Boolean).length > 0,
+    );
+    if (rules.length === 0) {
+      g += " {}";
+    } else {
+      g += "\n  egress:";
+      for (const r of rules) {
+        const cleanHosts = r.hosts.map((h) => h.trim()).filter(Boolean);
+        g += `\n    - ${r.kind}:\n        hostnames:`;
+        for (const h of cleanHosts) {
+          g += `\n          - ${q(h)}`;
+        }
+        if (
+          r.kind !== "tlsPassthrough" &&
+          r.header?.trim() &&
+          r.credentialUri?.trim()
+        ) {
+          g += `\n        effects:\n          replaceHeaders:\n            - header: ${q(r.header.trim())}`;
+          if (r.prefix) {
+            g += `\n              prefix: ${q(r.prefix)}`;
+          }
+          g += `\n              credentialUri: ${q(r.credentialUri.trim())}`;
+        }
+      }
+    }
+    docs.push(g);
+  }
+
   let t = `apiVersion: ax.io/v1alpha1\nkind: Task\nmetadata:\n  name: ${q(d.name)}${ates}\nspec:\n  profile:`;
   if (d.image) t += `\n    image: ${q(d.image)}`;
   t += `\n    resources:\n      limits:\n        cpu: ${q(cpuString(d.cpu))}\n        memory: ${q(memoryString(d.memoryMi))}`;
@@ -1100,8 +1269,14 @@ export function generate(d: Draft, redact = false): string {
   if (d.goal?.trim()) {
     t += `\n  goal:\n    text: ${q(d.goal.trim())}`;
   }
-  if (d.gateway?.trim()) {
-    t += `\n  gateway:\n    name: ${q(d.gateway.trim())}`;
+  const resolvedGateway =
+    gwMode === "new"
+      ? d.gatewayName?.trim()
+      : gwMode === "existing"
+        ? d.gateway?.trim()
+        : "";
+  if (resolvedGateway) {
+    t += `\n  gateway:\n    name: ${q(resolvedGateway)}`;
   }
   if (d.configMode === "custom") {
     t +=
@@ -1198,6 +1373,65 @@ export class DesignerStore extends EventTarget {
   set(patch: Partial<Draft>): void {
     this.draft = { ...this.draft, ...patch };
     this.dispatchEvent(new Event("change"));
+  }
+
+  toggleGatewayPreset(presetId: string, secretNamespace = "ax-system"): void {
+    const preset = GATEWAY_PRESETS.find((p) => p.id === presetId);
+    if (!preset) return;
+    const existing = this.draft.gatewayRules ?? [];
+    const has = existing.some((r) => r.presetId === presetId);
+    if (has) {
+      this.set({
+        gatewayMode: "new",
+        gatewayRules: existing.filter((r) => r.presetId !== presetId),
+      });
+      return;
+    }
+    const ns = secretNamespace.trim() || "ax-system";
+    const credentialUri =
+      preset.secretName && preset.secretKey
+        ? `ate-secret://k8s.io/default/${ns}/${preset.secretName}/${preset.secretKey}`
+        : undefined;
+    const nextRule: GatewayRuleDraft = {
+      id: uid(),
+      kind: preset.kind,
+      hosts: [...preset.hosts],
+      header: preset.header,
+      prefix: preset.prefix,
+      credentialUri,
+      presetId: preset.id,
+    };
+    this.set({
+      gatewayMode: "new",
+      gatewayName: this.draft.gatewayName?.trim() || "egress-gw",
+      gatewayRules: [...existing, nextRule],
+      ...(preset.secretName && preset.secretKey
+        ? { secretName: preset.secretName, secretKey: preset.secretKey }
+        : {}),
+    });
+  }
+
+  addGatewayRule(): void {
+    const existing = this.draft.gatewayRules ?? [];
+    this.set({
+      gatewayMode: "new",
+      gatewayName: this.draft.gatewayName?.trim() || "egress-gw",
+      gatewayRules: [...existing, { id: uid(), kind: "https", hosts: [""] }],
+    });
+  }
+
+  updateGatewayRule(id: number, patch: Partial<GatewayRuleDraft>): void {
+    const existing = this.draft.gatewayRules ?? [];
+    this.set({
+      gatewayRules: existing.map((r) => (r.id === id ? { ...r, ...patch } : r)),
+    });
+  }
+
+  removeGatewayRule(id: number): void {
+    const existing = this.draft.gatewayRules ?? [];
+    this.set({
+      gatewayRules: existing.filter((r) => r.id !== id),
+    });
   }
 
   load(t: Template): void {
