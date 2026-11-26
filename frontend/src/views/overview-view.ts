@@ -25,6 +25,7 @@ import {
   since,
 } from "../icons";
 import {
+  type AXGateway,
   type AXTask,
   type AXWorkspace,
   type Condition,
@@ -39,6 +40,10 @@ import {
   shortName,
   validateLabel,
 } from "../model/resources";
+import {
+  type CredentialSecretStatus,
+  probeCredentialSecret,
+} from "../model/secrets";
 import { loadRegistries, resolveImageDigest } from "../model/designer";
 import {
   type MoveStep,
@@ -1674,6 +1679,11 @@ export class AxOverview extends LitElement {
   @state() private confirmTask: AXTask | null = null;
   @state() private movingTask: AXTask | null = null;
   @state() private confirmWorkspace: AXWorkspace | null = null;
+  @state() private confirmGateway: AXGateway | null = null;
+  @state() private activeGateway: AXGateway | null = null;
+  @state() private gatewaySecretChecks: Record<string, CredentialSecretStatus> =
+    {};
+  @state() private probingGatewaySecrets = false;
   @state() private activeSnapshot: WorkspaceSnapshot | null = null;
   @state() private snapshotFiles: string[] = [];
   @state() private snapshotPreviews: Record<string, string> = {};
@@ -1701,7 +1711,11 @@ export class AxOverview extends LitElement {
   };
 
   private onKey = (e: KeyboardEvent): void => {
-    if (e.key === "Escape" && this.menu) this.menu = null;
+    if (e.key === "Escape") {
+      if (this.menu) this.menu = null;
+      else if (this.activeGateway) this.activeGateway = null;
+      else if (this.confirmGateway) this.confirmGateway = null;
+    }
   };
 
   private onSort(key: SortKey): void {
@@ -1900,6 +1914,11 @@ export class AxOverview extends LitElement {
             ${icon("folder-git", 14, { color: "var(--purple)" })}
             <span class="num">${s.workspaces.length}</span>
             <span class="muted">workspaces</span>
+            <span style="margin-left:8px"
+              >${icon("lock", 14, { color: "var(--green)" })}</span
+            >
+            <span class="num">${s.gateways.length}</span>
+            <span class="muted">gateways</span>
             <span style="margin-left:8px"
               >${icon("cpu", 14, { color: "var(--teal)" })}</span
             >
@@ -2334,7 +2353,8 @@ export class AxOverview extends LitElement {
                   </div>
                 `
           }
-          ${this.renderWorkspaces()} ${this.renderSnapshots()}
+          ${this.renderWorkspaces()} ${this.renderGateways()}
+          ${this.renderSnapshots()}
         </div>
 
         <ax-task-inspector></ax-task-inspector>
@@ -2400,6 +2420,16 @@ export class AxOverview extends LitElement {
             : nothing
         }
         ${
+          this.activeGateway
+            ? this.renderGatewayModal(this.activeGateway)
+            : nothing
+        }
+        ${
+          this.confirmGateway
+            ? this.renderDeleteGatewayModal(this.confirmGateway)
+            : nothing
+        }
+        ${
           this.activeSnapshot
             ? this.renderSnapshotModal(this.activeSnapshot)
             : nothing
@@ -2445,7 +2475,8 @@ export class AxOverview extends LitElement {
       <div class="row board-head" style="margin-top:18px" id="snapshot-board">
         <h2>Workspace Snapshots</h2>
         <span class="caption faint">
-          Persisted <code>.ax-local/snapshots/${s.atespace}/*.tar.gz</code>
+          Persisted
+          <code>.substrate-local/snapshots/${s.atespace}/*.tar.gz</code>
           archives (preserved even after containers are deleted).
         </span>
       </div>
@@ -2626,6 +2657,394 @@ ${
                     </div>
                   `
           }
+        </div>
+      </div>
+    `;
+  }
+
+  private async openGateway(gw: AXGateway): Promise<void> {
+    this.activeGateway = gw;
+    this.gatewaySecretChecks = {};
+    if (gw.secretRefs.length === 0) {
+      this.probingGatewaySecrets = false;
+      return;
+    }
+    this.probingGatewaySecrets = true;
+    const ctx = store.state.context;
+    const results = await Promise.all(
+      gw.secretRefs.map(async (ref) => {
+        const st = await probeCredentialSecret({
+          context: ctx,
+          namespace: ref.namespace,
+          name: ref.name,
+          key: ref.key,
+        });
+        return [ref.uri, st] as const;
+      }),
+    );
+    if (this.activeGateway?.id === gw.id) {
+      this.gatewaySecretChecks = Object.fromEntries(results);
+      this.probingGatewaySecrets = false;
+    }
+  }
+
+  private renderGateways() {
+    const s = store.state;
+    const gateways = [...s.gateways].sort((a, b) =>
+      a.name.localeCompare(b.name),
+    );
+    return html`
+      <div class="row board-head" style="margin-top:18px" id="gateway-board">
+        <h2>Gateways</h2>
+        <span class="caption faint"
+          >Outbound egress allowlists &amp; credential header injection
+          policies.</span
+        >
+      </div>
+      ${
+        gateways.length === 0
+          ? html`
+              <div class="card board-empty">
+                <div class="empty">
+                  ${icon("lock", 28)}
+                  <div style="font-weight:600;color:var(--on-surface-variant)">
+                    No gateways in this atespace
+                  </div>
+                </div>
+              </div>
+            `
+          : html`
+              <div class="card task-table-wrap">
+                <table class="task-table" aria-label="Gateways">
+                  <thead>
+                    <tr>
+                      <th class="col-name">
+                        <span class="th-label">Name</span>
+                      </th>
+                      <th class="col-repos">
+                        <span class="th-label">Allowed hosts</span>
+                      </th>
+                      <th class="col-mcp">
+                        <span class="th-label">Rules</span>
+                      </th>
+                      <th class="col-files">
+                        <span class="th-label">Credential secrets</span>
+                      </th>
+                      <th class="col-used">
+                        <span class="th-label">Tasks</span>
+                      </th>
+                      <th class="col-actions">
+                        <span class="sr">Actions</span>
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${gateways.map((gw) => {
+                      const n = store.tasksUsingGateway(gw.name).length;
+                      return html`
+                        <tr
+                          class="task-row"
+                          style="--c:var(--green)"
+                          @click=${() => void this.openGateway(gw)}
+                        >
+                          <td class="col-name">
+                            <span class="row task-row-ws">
+                              ${icon("lock", 13, { color: "var(--green)" })}
+                              <span
+                                class="task-row-name ellipsis"
+                                title=${gw.name}
+                                ><bdi dir="ltr">${gw.name}</bdi></span
+                              >
+                            </span>
+                          </td>
+                          <td
+                            class="col-repos mono ellipsis"
+                            title=${gw.hosts.join("\n")}
+                          >
+                            ${
+                              gw.hosts.length
+                                ? html`<bdi dir="ltr"
+                                    >${gw.hosts.join(", ")}</bdi
+                                  >`
+                                : html`<span class="faint">–</span>`
+                            }
+                          </td>
+                          <td class="col-mcp ellipsis">
+                            ${
+                              gw.rules.length
+                                ? `${gw.rules.length} ${gw.rules.length === 1 ? "rule" : "rules"} (${[...new Set(gw.rules.map((r) => r.kind))].join(", ")})`
+                                : html`<span class="faint">–</span>`
+                            }
+                          </td>
+                          <td
+                            class="col-files mono ellipsis"
+                            title=${gw.secretRefs
+                              .map((sr) => sr.uri)
+                              .join("\n")}
+                          >
+                            ${
+                              gw.secretRefs.length
+                                ? html`<bdi dir="ltr"
+                                    >${gw.secretRefs
+                                      .map((sr) => `${sr.name}/${sr.key}`)
+                                      .join(", ")}</bdi
+                                  >`
+                                : html`<span class="faint">none</span>`
+                            }
+                          </td>
+                          <td class="col-used num">
+                            ${n || html`<span class="faint">0</span>`}
+                          </td>
+                          <td
+                            class="col-actions"
+                            @click=${(e: Event) => e.stopPropagation()}
+                          >
+                            <div class="task-row-actions">
+                              <button
+                                class="btn ghost small icon"
+                                title="Inspect gateway"
+                                aria-label="Inspect gateway ${gw.name}"
+                                @click=${() => void this.openGateway(gw)}
+                              >
+                                ${icon("file-text", 12)}
+                              </button>
+                              <button
+                                class="btn ghost small icon danger"
+                                title="Delete gateway"
+                                aria-label="Delete gateway ${gw.name}"
+                                @click=${() => (this.confirmGateway = gw)}
+                              >
+                                ${icon("trash", 12)}
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      `;
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            `
+      }
+    `;
+  }
+
+  private renderGatewayModal(gw: AXGateway) {
+    const users = store.tasksUsingGateway(gw.name);
+    const close = () => {
+      this.activeGateway = null;
+    };
+    return html`
+      <div class="modal-backdrop" @mousedown=${close}>
+        <div
+          class="modal card fade-in gw-modal"
+          role="dialog"
+          aria-label="Inspect gateway ${gw.name}"
+          @mousedown=${(e: Event) => e.stopPropagation()}
+        >
+          <div class="row" style="margin-bottom:10px">
+            ${icon("lock", 16, { color: "var(--green)" })}
+            <h3 style="margin:0">Gateway “<bdi dir="ltr">${gw.name}</bdi>”</h3>
+            <span class="caption faint">atespace ${gw.atespace}</span>
+            <span class="spacer"></span>
+            <button
+              class="btn small ghost icon"
+              aria-label="Close gateway inspector"
+              @click=${close}
+            >
+              ${icon("x", 15)}
+            </button>
+          </div>
+
+          <div class="gw-section">
+            <div class="gw-section-head">
+              <strong>Egress rules (${gw.rules.length})</strong>
+              <span class="caption faint">
+                ${
+                  users.length > 0
+                    ? `Bound by ${users.length} ${users.length === 1 ? "task" : "tasks"}: ${users.map((t) => t.name).join(", ")}`
+                    : "Not referenced by any current tasks"
+                }
+              </span>
+            </div>
+            ${
+              gw.rules.length === 0
+                ? html`<div class="caption faint">
+                    No egress rules parsed from manifest.
+                  </div>`
+                : html`
+                    <div class="gw-rules">
+                      ${gw.rules.map(
+                        (r) => html`
+                          <div class="gw-rule">
+                            <span class="gw-proto mono">${r.kind}</span>
+                            <span class="mono selectable"
+                              ><bdi dir="ltr"
+                                >${r.hosts.join(", ") || "*"}</bdi
+                              ></span
+                            >
+                            ${
+                              r.headers?.length
+                                ? html`<span class="caption faint mono"
+                                    >injects: ${r.headers.join(", ")}</span
+                                  >`
+                                : nothing
+                            }
+                          </div>
+                        `,
+                      )}
+                    </div>
+                  `
+            }
+          </div>
+
+          ${
+            gw.secretRefs.length > 0
+              ? html`
+                  <div class="gw-section">
+                    <div class="gw-section-head">
+                      <strong>Paired Credential Secrets</strong>
+                      ${
+                        this.probingGatewaySecrets
+                          ? html`<span class="caption faint"
+                              >Checking cluster Secrets…</span
+                            >`
+                          : nothing
+                      }
+                    </div>
+                    <div class="gw-rules">
+                      ${gw.secretRefs.map((ref) => {
+                        const st = this.gatewaySecretChecks[ref.uri];
+                        const ok = st?.exists && st?.hasKey;
+                        const statusLabel = !st
+                          ? "Checking…"
+                          : st.isLocal
+                            ? "Local runtime (direct env)"
+                            : ok
+                              ? "Secret key present"
+                              : st.exists
+                                ? `Secret exists, missing key "${ref.key}"`
+                                : "Secret not found in cluster";
+                        return html`
+                          <div class="gw-rule">
+                            ${icon(
+                              ok || st?.isLocal ? "circle-check" : "alert",
+                              13,
+                              {
+                                color:
+                                  ok || st?.isLocal
+                                    ? "var(--green)"
+                                    : "var(--warn)",
+                              },
+                            )}
+                            <span class="mono selectable"
+                              ><bdi dir="ltr"
+                                >${ref.namespace}/${ref.name}[${ref.key}]</bdi
+                              ></span
+                            >
+                            <span class="caption faint">${statusLabel}</span>
+                            ${
+                              st && !st.isLocal && !ok
+                                ? html`<button
+                                    class="btn small ghost"
+                                    @click=${() => {
+                                      close();
+                                      store.setSection("designer");
+                                    }}
+                                  >
+                                    Configure in Deploy
+                                  </button>`
+                                : nothing
+                            }
+                          </div>
+                        `;
+                      })}
+                    </div>
+                  </div>
+                `
+              : nothing
+          }
+          ${
+            gw.manifest
+              ? html`
+                  <div class="gw-section">
+                    <div class="gw-section-head">
+                      <strong>Manifest YAML</strong>
+                      <button
+                        class="btn small ghost"
+                        @click=${() =>
+                          void navigator.clipboard.writeText(gw.manifest ?? "")}
+                      >
+                        ${icon("copy", 12)} Copy YAML
+                      </button>
+                    </div>
+                    <pre
+                      class="gw-yaml mono selectable"
+                      tabindex="0"
+                      aria-label="Gateway YAML manifest"
+                    >
+${gw.manifest}</pre>
+                  </div>
+                `
+              : nothing
+          }
+
+          <div class="row" style="justify-content:flex-end;margin-top:14px">
+            <button
+              class="btn danger"
+              @click=${() => {
+                this.activeGateway = null;
+                this.confirmGateway = gw;
+              }}
+            >
+              ${icon("trash", 13)} Delete Gateway
+            </button>
+            <button class="btn" @click=${close}>Close</button>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  private renderDeleteGatewayModal(gw: AXGateway) {
+    const users = store.tasksUsingGateway(gw.name);
+    const close = () => {
+      this.confirmGateway = null;
+    };
+    return html`
+      <div class="modal-backdrop" @mousedown=${close}>
+        <div
+          class="modal card fade-in"
+          role="dialog"
+          aria-label="Delete gateway"
+          @mousedown=${(e: Event) => e.stopPropagation()}
+        >
+          <h3>Delete gateway “${gw.name}”?</h3>
+          <p class="muted" style="margin:0 0 18px;line-height:1.5">
+            It's removed from <strong>${gw.atespace}</strong>. Existing tasks
+            keep their copied egress policy, but new tasks referencing it will
+            fail until recreated.
+            ${
+              users.length > 0
+                ? html`
+                    Currently bound by
+                    <strong>${users.map((t) => t.name).join(", ")}</strong>.
+                  `
+                : nothing
+            }
+          </p>
+          <div class="row" style="justify-content:flex-end">
+            <button class="btn" @click=${close}>Cancel</button>
+            <button
+              class="btn primary danger"
+              @click=${() => {
+                close();
+                void store.remove("gateway", gw.name);
+              }}
+            >
+              Delete
+            </button>
+          </div>
         </div>
       </div>
     `;
@@ -3035,6 +3454,60 @@ ${
         top: 0;
         min-width: 180px;
         z-index: 60;
+      }
+      .gw-modal {
+        width: min(680px, 92vw);
+        max-height: 84vh;
+        overflow-y: auto;
+      }
+      .gw-section {
+        margin-top: 12px;
+        padding-top: 10px;
+        border-top: 1px solid var(--border);
+      }
+      .gw-section-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        margin-bottom: 8px;
+      }
+      .gw-rules {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+      .gw-rule {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 8px;
+        padding: 6px 10px;
+        border-radius: var(--radius-s);
+        background: var(--surface-container-low);
+        border: 1px solid var(--border);
+        font-size: 12px;
+      }
+      .gw-proto {
+        padding: 1px 6px;
+        border-radius: 4px;
+        background: var(--surface-container-high);
+        font-size: 11px;
+        font-weight: 600;
+        color: var(--on-surface);
+      }
+      .gw-yaml {
+        margin: 0;
+        padding: 10px 12px;
+        border-radius: var(--radius-s);
+        background: var(--surface-container);
+        border: 1px solid var(--border);
+        font-size: 11.5px;
+        line-height: 1.45;
+        max-height: 220px;
+        overflow: auto;
+        white-space: pre-wrap;
+        word-break: break-word;
       }
     `,
   ];

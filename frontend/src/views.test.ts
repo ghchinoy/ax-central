@@ -824,6 +824,45 @@ describe("WebMCP ToolHost & AX tools", () => {
       KUBECONFIG: "/Users/dev/projects/ax/.tmp/kubeconfig-ax-e2e",
     });
     store.set({ context: "local", kindKubeconfigs: {} });
+
+    // Gateways WebMCP listing (ax-central-kmy)
+    const gwList = await el.host.call("list_gateways", {}, sig);
+    expect(gwList.count).toBe(1);
+    expect((gwList.gateways as { name: string }[])[0]?.name).toBe("gemini-gw");
+  });
+
+  it("renders Gateways table and Gateway inspector modal with paired Credential Secret check", async () => {
+    store.set({ context: "kind-ax-local", atespace: "default" });
+    await store.refresh(true);
+    const overview = document.createElement("ax-overview");
+    document.body.append(overview);
+    await (overview as unknown as { updateComplete: Promise<boolean> })
+      .updateComplete;
+
+    const root = overview.shadowRoot!;
+    const gwTable = root.querySelector('table[aria-label="Gateways"]');
+    expect(gwTable).not.toBeNull();
+    expect(gwTable!.textContent).toContain("gemini-gw");
+    expect(gwTable!.textContent).toContain("generativelanguage.googleapis.com");
+
+    const inspectBtn = root.querySelector<HTMLButtonElement>(
+      'button[aria-label="Inspect gateway gemini-gw"]',
+    );
+    expect(inspectBtn).not.toBeNull();
+    inspectBtn!.click();
+    await new Promise((r) => setTimeout(r, 30));
+    await (overview as unknown as { updateComplete: Promise<boolean> })
+      .updateComplete;
+
+    const modal = root.querySelector('[role="dialog"]');
+    expect(modal).not.toBeNull();
+    expect(modal!.textContent).toContain("Paired Credential Secrets");
+    expect(modal!.textContent).toContain("ax-system/gemini-api-key[api-key]");
+    expect(modal!.textContent).toContain("Secret key present");
+    expect(modal!.textContent).toContain("x-goog-api-key");
+
+    const results = await axe.run(modal as HTMLElement);
+    expect(results.violations).toEqual([]);
   });
 
   it("walks through the full E2E debian:12 flow on local (ate-local): Clusters -> Deploy -> Activity -> Logs -> Map -> Terminal -> WebMCP", async () => {

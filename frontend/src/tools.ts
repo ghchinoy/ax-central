@@ -97,6 +97,8 @@ export const TOOL_GROUPS: Record<string, string[]> = {
   "Workspaces & Scope": [
     "list_workspaces",
     "delete_workspace",
+    "list_gateways",
+    "delete_gateway",
     "list_contexts",
     "switch_scope",
   ],
@@ -492,6 +494,55 @@ export const TOOLS: ToolDef[] = [
     async execute(args, ctx) {
       const name = reqSafeName(args, "name");
       const r = await ctx.store.remove("workspace", name);
+      if (!r.ok) throw new ToolError(r.error);
+      return { result: { deleted: name, ok: true } };
+    },
+  },
+  {
+    name: "list_gateways",
+    description:
+      "List all AX Gateways in the current atespace with their allowed egress hosts, credential header rules, referenced Kubernetes Secrets, and bound tasks.",
+    inputSchema: obj({}),
+    readOnly: true,
+    untrusted: true,
+    async execute(_args, ctx) {
+      const s = ctx.store.state;
+      const gateways = s.gateways.map((g) => ({
+        id: g.id,
+        name: g.name,
+        atespace: g.atespace,
+        hosts: g.hosts,
+        rules: g.rules,
+        secret_refs: g.secretRefs,
+        tasks: ctx.store.tasksUsingGateway(g.name).map((t) => t.name),
+      }));
+      return {
+        result: {
+          atespace: s.atespace,
+          transport: s.transport,
+          count: gateways.length,
+          gateways,
+        },
+      };
+    },
+  },
+  {
+    name: "delete_gateway",
+    description:
+      "Delete an AX Gateway from the current atespace. Existing tasks keep their copied EgressPolicy; new tasks referencing this gateway will fail until recreated. Only call when explicitly requested by the user.",
+    inputSchema: obj(
+      {
+        name: {
+          type: "string",
+          description: "Name of the gateway to delete.",
+        },
+      },
+      ["name"],
+    ),
+    consequential: true,
+    async execute(args, ctx) {
+      const name = reqSafeName(args, "name");
+      const r = await ctx.store.remove("gateway", name);
       if (!r.ok) throw new ToolError(r.error);
       return { result: { deleted: name, ok: true } };
     },

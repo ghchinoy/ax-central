@@ -400,6 +400,8 @@ export class Store extends EventTarget {
   tasksIn = (p: Phase) => this.state.tasks.filter((t) => t.phase === p);
   tasksUsing = (ws: string) =>
     this.state.tasks.filter((t) => this.state.details[t.id]?.workspace === ws);
+  tasksUsingGateway = (gw: string) =>
+    this.state.tasks.filter((t) => this.state.details[t.id]?.gateway === gw);
 
   async start(): Promise<void> {
     if (this.startPromise) return this.startPromise;
