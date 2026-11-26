@@ -804,6 +804,31 @@ describe("WebMCP ToolHost & AX tools", () => {
       "✓ Start Apple Container stack (substrate-local) done",
     ]);
 
+    // Verify (substrate-local) card label & click-to-focus without leaving Clusters (ax-central-xdk)
+    const cards = [
+      ...clustersEl.shadowRoot!.querySelectorAll<HTMLElement>(".cluster-card"),
+    ];
+    const appleCard = cards.find((card) =>
+      card.textContent?.includes("Apple Container (substrate-local)"),
+    )!;
+    const orbCard = cards.find((card) =>
+      card.textContent?.includes("orbstack"),
+    )!;
+    expect(appleCard).toBeDefined();
+    expect(orbCard).toBeDefined();
+    orbCard.querySelector<HTMLElement>(".cluster-title")!.click();
+    await new Promise((r) => setTimeout(r, 10));
+    expect(store.state.context).toBe("orbstack");
+    expect(store.state.section).toBe("clusters");
+    // Clicking an inner button must not switch cluster focus.
+    appleCard.querySelector<HTMLButtonElement>(".term-btn")!.click();
+    expect(store.state.context).toBe("orbstack");
+    // Clicking the card header switches focus back to local in place.
+    appleCard.querySelector<HTMLElement>(".cluster-title")!.click();
+    await new Promise((r) => setTimeout(r, 10));
+    expect(store.state.context).toBe("local");
+    expect(store.state.section).toBe("clusters");
+
     openActivityBtn.click();
     expect(store.state.context).toBe("local");
     expect(store.state.section).toBe("overview");

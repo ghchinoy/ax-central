@@ -228,6 +228,31 @@ export class AxClusters extends LitElement {
     `;
   }
 
+  private isInteractiveTarget(target: EventTarget | null): boolean {
+    return (
+      target instanceof Element &&
+      Boolean(
+        target.closest(
+          "button, input, select, textarea, a, label, summary, .selectable",
+        ),
+      )
+    );
+  }
+
+  private async focusCluster(
+    e: MouseEvent,
+    context: string,
+    cluster?: Cluster,
+  ): Promise<void> {
+    if (this.isInteractiveTarget(e.target)) return;
+    if (store.state.context === context) return;
+    if (cluster && !cluster.inKubeconfig) {
+      if (!(await clusters.addToKubeconfig(cluster.name))) return;
+      await store.loadContexts();
+    }
+    store.setScope({ context });
+  }
+
   private renderAteLocalCard(): TemplateResult {
     const c = clusters.state;
     const al = c.ateLocal;
@@ -272,7 +297,7 @@ export class AxClusters extends LitElement {
       {
         id: "substrate",
         iconName: "layers",
-        title: "ate-local Substrate",
+        title: "substrate-local",
         health: subHealth,
         detail: al.ateLocal
           ? `ControlServer :50051 · ${al.actors.length} microVM${al.actors.length === 1 ? "" : "s"} on vmnet`
@@ -314,14 +339,15 @@ export class AxClusters extends LitElement {
 
     return html`
       <div
-        class="card cluster-card ${mine ? "busy" : ""} ${
+        class="card cluster-card selectable-card ${mine ? "busy" : ""} ${
           current || isSel ? "highlight" : ""
         }"
+        @click=${(e: MouseEvent) => void this.focusCluster(e, "local")}
       >
         <div class="row cluster-head">
           <div class="cluster-icon">${icon("laptop", 16)}</div>
           <div class="cluster-name">
-            <div class="cluster-title">Apple Container (ate-local)</div>
+            <div class="cluster-title">Apple Container (substrate-local)</div>
             <div class="faint mono cluster-ctx">
               <bdi dir="ltr">local · ${s.settings.localServer}</bdi>${
                 current ? " · in use" : ""
@@ -335,7 +361,7 @@ export class AxClusters extends LitElement {
             title=${
               isSel
                 ? "Hide terminal commands"
-                : "Use ate-local & ax-experiments from a terminal"
+                : "Use substrate-local & ax-experiments from a terminal"
             }
             @click=${() => (this.selected = isSel ? null : "ate-local")}
           >
@@ -425,8 +451,8 @@ export class AxClusters extends LitElement {
             ?disabled=${busy || !canRunScript}
             title=${
               !al.scriptFound
-                ? `examples/ate_local/local-stack.sh not found in ${s.settings.repoPath} (checkout ghchinoy/ax:feat/ate-local-apple-container)`
-                : "Start PostgreSQL 17, ate-local (:50051), and ax-server (:8090)"
+                ? `scripts/ax-stack.sh not found in ${sublocal} (clone github.com/ghchinoy/substrate-local)`
+                : "Start PostgreSQL 17, substrate-local (:50051), and ax-server (:8090)"
             }
             @click=${() => void clusters.localStackUp()}
           >
@@ -448,7 +474,7 @@ export class AxClusters extends LitElement {
                   <button
                     class="btn small ghost danger"
                     ?disabled=${busy || !canRunScript}
-                    title="Stop ax-server, ate-local, and PostgreSQL"
+                    title="Stop ax-server, substrate-local, and PostgreSQL"
                     @click=${() => void clusters.localStackDown()}
                   >
                     ${icon("square", 12)} Stop
@@ -510,7 +536,7 @@ export class AxClusters extends LitElement {
       {
         id: "substrate-b",
         iconName: "layers",
-        title: "ate-local-b Substrate",
+        title: "substrate-local-b",
         health: subHealth,
         detail: al.ateLocalB
           ? `ControlServer :50052 · ${al.podmanActors.length} Podman container${al.podmanActors.length === 1 ? "" : "s"}`
@@ -548,14 +574,17 @@ export class AxClusters extends LitElement {
 
     return html`
       <div
-        class="card cluster-card ${mine ? "busy" : ""} ${
+        class="card cluster-card selectable-card ${mine ? "busy" : ""} ${
           current || isSel ? "highlight" : ""
         }"
+        @click=${(e: MouseEvent) => void this.focusCluster(e, "local-podman")}
       >
         <div class="row cluster-head">
           <div class="cluster-icon">${icon("box", 16)}</div>
           <div class="cluster-name">
-            <div class="cluster-title">Podman Cluster B (ate-local-b)</div>
+            <div class="cluster-title">
+              Podman Cluster B (substrate-local-b)
+            </div>
             <div class="faint mono cluster-ctx">
               <bdi dir="ltr">local-podman · ${serverB}</bdi>${
                 current ? " · in use" : ""
@@ -670,7 +699,7 @@ export class AxClusters extends LitElement {
                   <button
                     class="btn small ghost danger"
                     ?disabled=${busy || !canRunScript}
-                    title="Stop Cluster B (ate-local-b :50052 and ax-server-b :8091)"
+                    title="Stop Cluster B (substrate-local-b :50052 and ax-server-b :8091)"
                     @click=${() => void clusters.localStackMultiDown()}
                   >
                     ${icon("square", 12)} Stop
@@ -713,11 +742,15 @@ export class AxClusters extends LitElement {
       }
     };
 
+    const canFocus = cl.reachable || axReady;
     return html`
       <div
-        class="card cluster-card ${mine ? "busy" : ""} ${
+        class="card cluster-card ${canFocus ? "selectable-card" : ""} ${mine ? "busy" : ""} ${
           current || isSel ? "highlight" : ""
         }"
+        @click=${(e: MouseEvent) => {
+          if (canFocus) void this.focusCluster(e, cl.context, cl);
+        }}
       >
         <div class="row cluster-head">
           <div class="cluster-icon">${icon("boxes", 16)}</div>
@@ -996,7 +1029,7 @@ export class AxClusters extends LitElement {
                   <button
                     class="btn small primary"
                     ?disabled=${busy}
-                    title="Install/build all missing ate-local & ax-experiments prerequisites"
+                    title="Install/build all missing substrate-local & ax-experiments prerequisites"
                     @click=${() => void clusters.bootstrap("all")}
                   >
                     ${icon("play", 11)} Bootstrap All
@@ -1483,6 +1516,13 @@ export class AxClusters extends LitElement {
         display: flex;
         flex-direction: column;
         gap: 12px;
+      }
+      .cluster-card.selectable-card {
+        cursor: pointer;
+        transition: border-color 120ms ease;
+      }
+      .cluster-card.selectable-card:hover {
+        border-color: color-mix(in srgb, var(--primary) 45%, transparent);
       }
       .cluster-card.busy {
         border-color: color-mix(in srgb, var(--primary) 55%, transparent);
