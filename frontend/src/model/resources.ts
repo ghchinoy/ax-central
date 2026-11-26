@@ -151,6 +151,33 @@ export interface AXModel {
   atespace: string;
   provider: string;
   model: string;
+  secretName?: string;
+  secretKey?: string;
+  manifest?: string;
+}
+
+export interface AXGatewaySecretRef {
+  namespace: string;
+  name: string;
+  key: string;
+  uri: string;
+}
+
+export interface AXGatewayRule {
+  kind: string;
+  hosts: string[];
+  headers?: string[];
+  secretUri?: string;
+}
+
+export interface AXGateway {
+  id: string;
+  name: string;
+  atespace: string;
+  hosts: string[];
+  rules: AXGatewayRule[];
+  secretRefs: AXGatewaySecretRef[];
+  manifest?: string;
 }
 
 export interface AXContext {
@@ -236,6 +263,87 @@ export const parseModels = (text: string): AXModel[] =>
         model: r.MODEL ?? "",
       };
     });
+
+export const parseGateways = (text: string): AXGateway[] =>
+  parseTable(text)
+    .filter((r) => r.NAME)
+    .map((r) => {
+      const atespace = r.ATESPACE || "default";
+      const hosts = (r.HOSTS ?? r.EGRESS ?? "")
+        .split(",")
+        .map((s) => s.trim())
+        .filter((s) => s && s !== "<none>" && s !== "-");
+      return {
+        id: `${atespace}/${r.NAME}`,
+        name: r.NAME,
+        atespace,
+        hosts,
+        rules: [],
+        secretRefs: [],
+      };
+    });
+
+const ATE_SECRET_URI_RE =
+  /ate-secret:\/\/k8s\.io\/[^/\s"']+\/([^/\s"']+)\/([^/\s"']+)\/([^/\s"']+)/g;
+
+/* eslint-disable @typescript-eslint/no-explicit-any */
+export function parseGatewayYAML(text: string, gw: AXGateway): AXGateway {
+  const doc: any = parseYAML(text) ?? {};
+  const egress: any[] = Array.isArray(doc.spec?.egress) ? doc.spec.egress : [];
+  const hostSet = new Set<string>(gw.hosts);
+  const rules: AXGatewayRule[] = [];
+  const secretMap = new Map<string, AXGatewaySecretRef>();
+
+  for (const r of egress) {
+    for (const kind of ["https", "http", "tlsPassthrough"] as const) {
+      const sub = r?.[kind];
+      if (!sub || typeof sub !== "object") continue;
+      const hosts: string[] = Array.isArray(sub.hostnames)
+        ? sub.hostnames.map(String).filter(Boolean)
+        : Array.isArray(sub.hosts)
+          ? sub.hosts.map(String).filter(Boolean)
+          : [];
+      for (const h of hosts) hostSet.add(h);
+      const headers: string[] = [];
+      let secretUri: string | undefined;
+      const rh = sub.effects?.replaceHeaders;
+      if (Array.isArray(rh)) {
+        for (const item of rh) {
+          if (item?.header) headers.push(String(item.header));
+          const uri = String(item?.credentialUri ?? "");
+          if (uri) {
+            if (!secretUri) secretUri = uri;
+            ATE_SECRET_URI_RE.lastIndex = 0;
+            const m = ATE_SECRET_URI_RE.exec(uri);
+            if (m && !secretMap.has(uri)) {
+              secretMap.set(uri, {
+                namespace: m[1],
+                name: m[2],
+                key: m[3],
+                uri,
+              });
+            }
+          }
+        }
+      }
+      rules.push({
+        kind,
+        hosts,
+        ...(headers.length ? { headers: headers.sort() } : {}),
+        ...(secretUri ? { secretUri } : {}),
+      });
+    }
+  }
+
+  return {
+    ...gw,
+    hosts: [...hostSet].sort(),
+    rules,
+    secretRefs: [...secretMap.values()],
+    manifest: text,
+  };
+}
+/* eslint-enable @typescript-eslint/no-explicit-any */
 
 /** `ax config get-contexts`: an optional `*` marker, the name, then a free-text description. */
 export function parseContexts(text: string): AXContext[] {

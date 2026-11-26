@@ -623,6 +623,88 @@ describe("resources & designer models", () => {
     const gutterRaw = root.querySelectorAll(".yaml-gutter > div").length;
     expect(gutterRaw).toBe(gutterReadOnly);
   });
+
+  it("uses direct gRPC axListScope and axMutate when available on window.studio", async () => {
+    const mutated: string[] = [];
+    window.studio.axListScope = async () => ({
+      ok: true,
+      tasks: [
+        {
+          name: "grpc-task",
+          atespace: "default",
+          state: "TASK_STATE_RUNNING",
+          actor: "grpc-task",
+          age: "12s",
+          manifest: `apiVersion: ax.io/v1alpha1\nkind: Task\nmetadata:\n  name: grpc-task\nspec:\n  gateway:\n    name: gemini-gw\n  profile:\n    image: debian:12\nstatus:\n  state: TASK_STATE_RUNNING\n`,
+        },
+      ],
+      workspaces: [],
+      models: [
+        {
+          name: "gemini-fast",
+          atespace: "default",
+          provider: "google",
+          modelId: "gemini-3.8-flash",
+          secretName: "gemini-key",
+          secretKey: "api-key",
+          manifest: "",
+        },
+      ],
+      gateways: [
+        {
+          name: "gemini-gw",
+          atespace: "default",
+          hosts: ["generativelanguage.googleapis.com"],
+          rules: [
+            {
+              kind: "https",
+              hosts: ["generativelanguage.googleapis.com"],
+              headers: ["x-goog-api-key"],
+              secretUri:
+                "ate-secret://k8s.io/default/ax-system/gemini-key/api-key",
+            },
+          ],
+          secretRefs: [
+            {
+              namespace: "ax-system",
+              name: "gemini-key",
+              key: "api-key",
+              uri: "ate-secret://k8s.io/default/ax-system/gemini-key/api-key",
+            },
+          ],
+          manifest: "apiVersion: ax.io/v1alpha1\nkind: Gateway\n",
+        },
+      ],
+    });
+    window.studio.axMutate = async (req) => {
+      mutated.push(`${req.kind}:${req.action}:${req.name}`);
+      return { ok: true };
+    };
+    try {
+      store.setScope({ context: "local", atespace: "default" });
+      await store.refresh(true);
+      expect(store.state.transport).toBe("grpc");
+      expect(store.state.tasks.map((t) => t.name)).toEqual(["grpc-task"]);
+      expect(store.state.details["default/grpc-task"]?.gateway).toBe(
+        "gemini-gw",
+      );
+      expect(store.state.gateways).toHaveLength(1);
+      expect(store.state.gateways[0].hosts).toEqual([
+        "generativelanguage.googleapis.com",
+      ]);
+      expect(store.state.gateways[0].secretRefs[0]?.name).toBe("gemini-key");
+
+      await store.suspend(store.state.tasks[0]);
+      await store.remove("gateway", "gemini-gw");
+      expect(mutated).toEqual([
+        "task:suspend:grpc-task",
+        "gateway:delete:gemini-gw",
+      ]);
+    } finally {
+      window.studio.axListScope = undefined;
+      window.studio.axMutate = undefined;
+    }
+  });
 });
 
 describe("WebMCP ToolHost & AX tools", () => {

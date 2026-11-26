@@ -129,10 +129,92 @@ export interface A2APromptResult {
   error?: string;
 }
 
+export interface AXTarget {
+  serverUrl?: string;
+  context?: string;
+  namespace?: string;
+  atespace?: string;
+  kubeconfig?: string;
+}
+
+export interface AXTaskItem {
+  name: string;
+  atespace: string;
+  state: string;
+  actor?: string;
+  age: string;
+  manifest: string;
+}
+
+export interface AXWorkspaceItem {
+  name: string;
+  atespace: string;
+  phase: string;
+  gitRepos: number;
+  mcpServers: number;
+  manifest: string;
+}
+
+export interface AXModelItem {
+  name: string;
+  atespace: string;
+  provider: string;
+  modelId: string;
+  secretName?: string;
+  secretKey?: string;
+  manifest: string;
+}
+
+export interface AXGatewaySecretRef {
+  namespace: string;
+  name: string;
+  key: string;
+  uri: string;
+}
+
+export interface AXGatewayRule {
+  kind: string;
+  hosts: string[];
+  headers?: string[];
+  secretUri?: string;
+}
+
+export interface AXGatewayItem {
+  name: string;
+  atespace: string;
+  hosts: string[];
+  rules: AXGatewayRule[];
+  secretRefs?: AXGatewaySecretRef[];
+  manifest: string;
+}
+
+export interface AXListSnapshot {
+  ok: boolean;
+  error?: string;
+  tasks: AXTaskItem[];
+  workspaces: AXWorkspaceItem[];
+  models: AXModelItem[];
+  gateways: AXGatewayItem[];
+}
+
+export interface AXActionRequest {
+  target: AXTarget;
+  kind: "task" | "workspace" | "model" | "gateway";
+  action: "resume" | "suspend" | "delete";
+  name: string;
+}
+
+export interface AXActionResult {
+  ok: boolean;
+  error?: string;
+}
+
 export interface StudioAPI {
   platform(): Promise<PlatformInfo>;
   run(req: RunRequest): Promise<CommandResult>;
   pipe(req: PipeRequest): Promise<CommandResult>;
+  axListScope?(target: AXTarget): Promise<AXListSnapshot>;
+  axMutate?(req: AXActionRequest): Promise<AXActionResult>;
   probeAgentCard(req: A2ATargetRequest): Promise<AgentCardResult>;
   sendA2APrompt(req: A2APromptRequest): Promise<A2APromptResult>;
   stream(req: StreamRequest): Promise<void>;
@@ -160,6 +242,8 @@ interface WailsAppBindings {
   Platform(): Promise<PlatformInfo>;
   Run(req: RunRequest): Promise<CommandResult>;
   Pipe(req: PipeRequest): Promise<CommandResult>;
+  AXListScope?(target: AXTarget): Promise<AXListSnapshot>;
+  AXMutate?(req: AXActionRequest): Promise<AXActionResult>;
   ProbeAgentCard(req: A2ATargetRequest): Promise<AgentCardResult>;
   SendA2APrompt(req: A2APromptRequest): Promise<A2APromptResult>;
   Stream(req: StreamRequest): Promise<void>;
@@ -213,6 +297,10 @@ function createWailsStudio(
     platform: () => goApp.Platform(),
     run: (req) => goApp.Run(req),
     pipe: (req) => goApp.Pipe(req),
+    axListScope: goApp.AXListScope
+      ? (target) => goApp.AXListScope!(target)
+      : undefined,
+    axMutate: goApp.AXMutate ? (req) => goApp.AXMutate!(req) : undefined,
     probeAgentCard: (req) => goApp.ProbeAgentCard(req),
     sendA2APrompt: (req) => goApp.SendA2APrompt(req),
     stream: (req) => goApp.Stream(req),
@@ -290,6 +378,22 @@ export function createFallbackStudio(
         status: 0,
         stdout:
           "NAME            ATESPACE   PROVIDER   MODEL\ndefault-model   default    google     gemini-3.8-flash\n",
+        stderr: "",
+      };
+    }
+    if (req.args?.includes("gateways")) {
+      return {
+        status: 0,
+        stdout:
+          "NAME        ATESPACE   HOSTS\ngemini-gw   default    generativelanguage.googleapis.com\n",
+        stderr: "",
+      };
+    }
+    if (req.args?.includes("gateway")) {
+      const name = req.args[req.args.length - 1] ?? "gemini-gw";
+      return {
+        status: 0,
+        stdout: `apiVersion: ax.io/v1alpha1\nkind: Gateway\nmetadata:\n  name: ${name}\n  atespace: default\nspec:\n  egress:\n    - https:\n        hostnames:\n          - generativelanguage.googleapis.com\n        effects:\n          replaceHeaders:\n            - header: x-goog-api-key\n              credentialUri: ate-secret://k8s.io/default/ax-system/gemini-api-key/api-key\n`,
         stderr: "",
       };
     }

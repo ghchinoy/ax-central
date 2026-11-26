@@ -60,15 +60,37 @@ type TraySummary struct {
 
 // App is bound to the Wails frontend.
 type App struct {
-	ctx   context.Context
-	shell *Shell
+	ctx      context.Context
+	shell    *Shell
+	axDialer *axDialer
 }
 
 // NewApp creates a new App instance with an initialized Shell.
 func NewApp() *App {
 	return &App{
-		shell: NewShell(),
+		shell:    NewShell(),
+		axDialer: newAXDialer(),
 	}
+}
+
+// AXListScope lists Tasks, Workspaces, Models, and Gateways over direct gRPC
+// via github.com/google/ax/client (#640).
+func (a *App) AXListScope(target AXTarget) AXListSnapshot {
+	ctx := a.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return listAXScope(ctx, a.axDialer, target)
+}
+
+// AXMutate runs ResumeTask, SuspendTask, or Delete{Task,Workspace,Model,Gateway}
+// over direct gRPC via github.com/google/ax/client (#640).
+func (a *App) AXMutate(req AXActionRequest) AXActionResult {
+	ctx := a.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return mutateAXResource(ctx, a.axDialer, req)
 }
 
 func (a *App) startup(ctx context.Context) {

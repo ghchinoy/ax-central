@@ -17,12 +17,15 @@
 import {
   type A2APromptResult,
   type A2ATargetRequest,
+  type AXActionRequest,
+  type AXTarget,
   type AgentCardResult,
   type CommandResult,
   ensureStudioBridge,
 } from "../bridge";
 import {
   type AXContext,
+  type AXGateway,
   type AXModel,
   type AXTask,
   type AXWorkspace,
@@ -33,6 +36,8 @@ import {
   isLocalContext,
   isSafeResourceName,
   parseContexts,
+  parseGatewayYAML,
+  parseGateways,
   parseModels,
   parseTaskYAML,
   parseTasks,
@@ -257,7 +262,9 @@ export interface State {
   tasks: AXTask[];
   workspaces: AXWorkspace[];
   models: AXModel[];
+  gateways: AXGateway[];
   details: Record<string, TaskDetail>;
+  transport: "grpc" | "cli";
   selectedTaskID: string | null;
   isRefreshing: boolean;
   lastRefresh: number | null;
@@ -328,7 +335,9 @@ export class Store extends EventTarget {
     tasks: [],
     workspaces: [],
     models: [],
+    gateways: [],
     details: {},
+    transport: "cli",
     selectedTaskID: null,
     isRefreshing: false,
     lastRefresh: null,
@@ -441,6 +450,7 @@ export class Store extends EventTarget {
       tasks: [],
       workspaces: [],
       models: [],
+      gateways: [],
       details: {},
       history: [],
       snapshots: [],
@@ -645,6 +655,61 @@ export class Store extends EventTarget {
     return this.envFor(this.state.context);
   }
 
+  grpcTargetFor(context: string, atespace: string): AXTarget {
+    const ates =
+      atespace && isSafeResourceName(atespace) ? atespace : "default";
+    if (context === "local") {
+      return {
+        serverUrl: this.state.settings.localServer || "localhost:8090",
+        atespace: ates,
+      };
+    }
+    if (context === "local-podman" || context === "local-b") {
+      return {
+        serverUrl: this.state.settings.localServerB || "localhost:8091",
+        atespace: ates,
+      };
+    }
+    return {
+      context: context && isSafeResourceName(context) ? context : undefined,
+      atespace: ates,
+      kubeconfig: this.state.kindKubeconfigs[context],
+    };
+  }
+
+  private async mutateViaGRPC(
+    title: string,
+    kind: AXActionRequest["kind"],
+    action: AXActionRequest["action"],
+    name: string,
+    cliFallbackArgs: string[],
+  ): Promise<Result> {
+    ensureStudioBridge();
+    if (window.studio.axMutate) {
+      const res = await window.studio.axMutate({
+        target: this.grpcTargetFor(this.state.context, this.state.atespace),
+        kind,
+        action,
+        name,
+      });
+      if (res.ok) {
+        this.log(title, `${kind}/${name} (${action} via gRPC)`, true);
+        await this.refresh(true);
+        return { status: 0, ok: true, stdout: "", stderr: "", error: "" };
+      }
+      const err = res.error ?? "gRPC mutation failed";
+      const allowFallback =
+        !isLocalContext(this.state.context) &&
+        /falling back to ax CLI|no context|kubectl not found/i.test(err);
+      if (!allowFallback) {
+        this.log(title, err, false);
+        await this.refresh(true);
+        return { status: 1, ok: false, stdout: "", stderr: err, error: err };
+      }
+    }
+    return this.perform(title, cliFallbackArgs);
+  }
+
   async ax(args: string[], stdin?: string): Promise<Result> {
     ensureStudioBridge();
     return result(
@@ -683,45 +748,149 @@ export class Store extends EventTarget {
     if ((this.state.isRefreshing && !force) || !this.state.context) return;
     this.set({ isRefreshing: true });
     try {
-      const [tr, wr, mr] = await Promise.all([
-        this.ax(["get", "tasks"]),
-        this.ax(["get", "workspaces"]),
-        this.ax(["get", "models"]),
-      ]);
-      if (!tr.ok) {
-        this.set({ connectionError: tr.error });
-        return;
+      ensureStudioBridge();
+      let tasks: AXTask[] = [];
+      let workspaces: AXWorkspace[] = [];
+      let models: AXModel[] = this.state.models;
+      let gateways: AXGateway[] = this.state.gateways;
+      let details: Record<string, TaskDetail> = {};
+      let transport: "grpc" | "cli" = "cli";
+      let usedGRPC = false;
+
+      if (window.studio.axListScope) {
+        const snap = await window.studio.axListScope(
+          this.grpcTargetFor(this.state.context, this.state.atespace),
+        );
+        if (snap.ok) {
+          usedGRPC = true;
+          transport = "grpc";
+          tasks = (snap.tasks ?? [])
+            .map((t) => {
+              const ates = t.atespace || this.state.atespace || "default";
+              const id = `${ates}/${t.name}`;
+              const parsed = t.manifest ? parseTaskYAML(t.manifest) : undefined;
+              if (parsed) details[id] = parsed;
+              return {
+                id,
+                name: t.name,
+                atespace: ates,
+                phase: toPhase(t.state),
+                actor: t.actor || undefined,
+                age: t.age || "",
+              };
+            })
+            .sort(
+              (a, b) =>
+                comparePhase(a.phase, b.phase) || a.name.localeCompare(b.name),
+            );
+          workspaces = (snap.workspaces ?? []).map((w) => {
+            const ates = w.atespace || this.state.atespace || "default";
+            const base: AXWorkspace = {
+              id: `${ates}/${w.name}`,
+              name: w.name,
+              atespace: ates,
+              gitCount: w.gitRepos ?? 0,
+              mcpCount: w.mcpServers ?? 0,
+              repos: [],
+              mcpServers: [],
+              files: [],
+            };
+            return w.manifest ? parseWorkspaceYAML(w.manifest, base) : base;
+          });
+          models = (snap.models ?? []).map((m) => {
+            const ates = m.atespace || this.state.atespace || "default";
+            return {
+              id: `${ates}/${m.name}`,
+              name: m.name,
+              atespace: ates,
+              provider: m.provider || "",
+              model: m.modelId || "",
+              secretName: m.secretName || undefined,
+              secretKey: m.secretKey || undefined,
+              manifest: m.manifest || undefined,
+            };
+          });
+          gateways = (snap.gateways ?? []).map((g) => {
+            const ates = g.atespace || this.state.atespace || "default";
+            return {
+              id: `${ates}/${g.name}`,
+              name: g.name,
+              atespace: ates,
+              hosts: g.hosts ?? [],
+              rules: g.rules ?? [],
+              secretRefs: g.secretRefs ?? [],
+              manifest: g.manifest || undefined,
+            };
+          });
+        } else {
+          const err = snap.error ?? "gRPC list failed";
+          const allowFallback =
+            !isLocalContext(this.state.context) &&
+            /falling back to ax CLI|no context|kubectl not found/i.test(err);
+          if (!allowFallback) {
+            this.set({ connectionError: err, transport: "grpc" });
+            return;
+          }
+        }
       }
-      const tasks = parseTasks(tr.stdout).sort(
-        (a, b) =>
-          comparePhase(a.phase, b.phase) || a.name.localeCompare(b.name),
-      );
-      const workspaces = wr.ok
-        ? parseWorkspaces(wr.stdout).map((w) => {
-            const old = this.state.workspaces.find((o) => o.id === w.id);
-            return old
-              ? {
-                  ...w,
-                  repos: old.repos,
-                  mcpServers: old.mcpServers,
-                  files: old.files,
-                }
-              : w;
-          })
-        : this.state.workspaces;
+
+      if (!usedGRPC) {
+        const [tr, wr, mr, gr] = await Promise.all([
+          this.ax(["get", "tasks"]),
+          this.ax(["get", "workspaces"]),
+          this.ax(["get", "models"]),
+          this.ax(["get", "gateways"]),
+        ]);
+        if (!tr.ok) {
+          this.set({ connectionError: tr.error, transport: "cli" });
+          return;
+        }
+        tasks = parseTasks(tr.stdout).sort(
+          (a, b) =>
+            comparePhase(a.phase, b.phase) || a.name.localeCompare(b.name),
+        );
+        const wsList = wr.ok
+          ? parseWorkspaces(wr.stdout).map((w) => {
+              const old = this.state.workspaces.find((o) => o.id === w.id);
+              return old
+                ? {
+                    ...w,
+                    repos: old.repos,
+                    mcpServers: old.mcpServers,
+                    files: old.files,
+                  }
+                : w;
+            })
+          : this.state.workspaces;
+        models = mr.ok ? parseModels(mr.stdout) : this.state.models;
+        const gwBase = gr.ok ? parseGateways(gr.stdout) : this.state.gateways;
+        const fetched = await this.fetchDetails(tasks, wsList, force);
+        details = fetched.details;
+        workspaces = fetched.workspaces;
+        if (gr.ok && gwBase.length > 0) {
+          const gwDetails = await Promise.all(
+            gwBase.map(async (gw) => {
+              if (!isSafeResourceName(gw.name)) return gw;
+              const r = await this.ax(["get", "gateway", gw.name]);
+              return r.ok ? parseGatewayYAML(r.stdout, gw) : gw;
+            }),
+          );
+          gateways = gwDetails;
+        } else {
+          gateways = gwBase;
+        }
+      }
+
       const counts: Record<string, number> = {};
       for (const t of tasks) counts[t.phase] = (counts[t.phase] ?? 0) + 1;
-      const [fetched, snapshots] = await Promise.all([
-        this.fetchDetails(tasks, workspaces, force),
-        isLocalContext(this.state.context)
-          ? this.loadSnapshots()
-          : Promise.resolve([] as WorkspaceSnapshot[]),
-      ]);
+      const snapshots = isLocalContext(this.state.context)
+        ? await this.loadSnapshots()
+        : ([] as WorkspaceSnapshot[]);
       const now = Date.now();
       const prevFrame = this.state.dvrFrames[this.state.dvrFrames.length - 1];
       const frameSig = (tList: AXTask[], wList: AXWorkspace[]) =>
         `${tList.map((t) => `${t.id}:${t.phase}:${t.workerIP ?? ""}`).join(",")}|${wList.map((w) => w.id).join(",")}`;
-      const curSig = frameSig(tasks, fetched.workspaces);
+      const curSig = frameSig(tasks, workspaces);
       const prevSig = prevFrame
         ? frameSig(prevFrame.tasks, prevFrame.workspaces)
         : null;
@@ -747,19 +916,21 @@ export class Store extends EventTarget {
             label: tStr,
             note,
             tasks: tasks.map((t) => ({ ...t })),
-            workspaces: fetched.workspaces,
-            details: { ...fetched.details },
+            workspaces,
+            details: { ...details },
           },
         ].slice(-120);
       }
 
       this.set({
         connectionError: null,
+        transport,
         tasks: same(tasks, this.state.tasks) ? this.state.tasks : tasks,
         ...this.takeAskedTask(tasks),
-        workspaces: fetched.workspaces,
-        details: fetched.details,
-        models: mr.ok ? parseModels(mr.stdout) : this.state.models,
+        workspaces,
+        details,
+        models,
+        gateways,
         snapshots,
         dvrFrames,
         lastRefresh: now,
@@ -1046,16 +1217,41 @@ export class Store extends EventTarget {
 
   suspend = async (t: AXTask): Promise<Result> =>
     isSafeResourceName(t.name)
-      ? this.perform(`Suspend ${t.name}`, ["suspend", "task", t.name])
+      ? this.mutateViaGRPC(`Suspend ${t.name}`, "task", "suspend", t.name, [
+          "suspend",
+          "task",
+          t.name,
+        ])
       : this.invalidNameResult(t.name);
   resume = async (t: AXTask): Promise<Result> =>
     isSafeResourceName(t.name)
-      ? this.perform(`Resume ${t.name}`, ["resume", "task", t.name])
+      ? this.mutateViaGRPC(`Resume ${t.name}`, "task", "resume", t.name, [
+          "resume",
+          "task",
+          t.name,
+        ])
       : this.invalidNameResult(t.name);
-  remove = async (kind: string, name: string): Promise<Result> =>
-    isSafeResourceName(kind) && isSafeResourceName(name)
-      ? this.perform(`Delete ${kind} ${name}`, ["delete", kind, name])
-      : this.invalidNameResult(name);
+  remove = async (kind: string, name: string): Promise<Result> => {
+    if (!isSafeResourceName(kind) || !isSafeResourceName(name)) {
+      return this.invalidNameResult(name);
+    }
+    const lower = kind.toLowerCase();
+    if (
+      lower === "task" ||
+      lower === "workspace" ||
+      lower === "model" ||
+      lower === "gateway"
+    ) {
+      return this.mutateViaGRPC(
+        `Delete ${kind} ${name}`,
+        lower,
+        "delete",
+        name,
+        ["delete", kind, name],
+      );
+    }
+    return this.perform(`Delete ${kind} ${name}`, ["delete", kind, name]);
+  };
   apply = (yaml: string) =>
     this.perform("Apply manifest", ["apply", "-f", "-"], yaml);
 
@@ -1070,8 +1266,25 @@ export class Store extends EventTarget {
       )
     ).filter((t) => isSafeResourceName(t.name));
     if (!targets.length) return;
+    ensureStudioBridge();
+    const targetScope = this.grpcTargetFor(
+      this.state.context,
+      this.state.atespace,
+    );
     const results = await Promise.all(
-      targets.map((t) => this.ax(["resume", "task", t.name])),
+      targets.map(async (t): Promise<Result> => {
+        if (window.studio.axMutate) {
+          const res = await window.studio.axMutate({
+            target: targetScope,
+            kind: "task",
+            action: "resume",
+            name: t.name,
+          });
+          if (res.ok)
+            return { status: 0, ok: true, stdout: "", stderr: "", error: "" };
+        }
+        return this.ax(["resume", "task", t.name]);
+      }),
     );
     const ok = results.every((r) => r.ok);
     const firstErr = results.find((r) => !r.ok)?.error ?? "";
@@ -1091,8 +1304,25 @@ export class Store extends EventTarget {
       )
     ).filter((t) => isSafeResourceName(t.name));
     if (!targets.length) return;
+    ensureStudioBridge();
+    const targetScope = this.grpcTargetFor(
+      this.state.context,
+      this.state.atespace,
+    );
     const results = await Promise.all(
-      targets.map((t) => this.ax(["suspend", "task", t.name])),
+      targets.map(async (t): Promise<Result> => {
+        if (window.studio.axMutate) {
+          const res = await window.studio.axMutate({
+            target: targetScope,
+            kind: "task",
+            action: "suspend",
+            name: t.name,
+          });
+          if (res.ok)
+            return { status: 0, ok: true, stdout: "", stderr: "", error: "" };
+        }
+        return this.ax(["suspend", "task", t.name]);
+      }),
     );
     const ok = results.every((r) => r.ok);
     const firstErr = results.find((r) => !r.ok)?.error ?? "";
