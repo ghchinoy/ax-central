@@ -87,6 +87,46 @@ export interface DVRFrame {
   details: Record<string, TaskDetail>;
 }
 
+export interface TraceFileEntry {
+  name: string;
+  path: string;
+  scope: "saved" | "sample";
+  context?: string;
+  atespace?: string;
+}
+
+export interface SavedTraceMeta {
+  context: string;
+  atespace: string;
+  backend: string;
+  recorded_at: string;
+  frames: number;
+}
+
+export function serializeDVRFramesToJSONL(
+  frames: DVRFrame[],
+  meta: Omit<SavedTraceMeta, "frames">,
+): string {
+  const header = JSON.stringify({
+    kind: "dvr.meta",
+    ...meta,
+    frames: frames.length,
+  });
+  const lines = frames.map((f) =>
+    JSON.stringify({
+      kind: "dvr.frame",
+      t: Number((f.date / 1000).toFixed(3)),
+      date: f.date,
+      label: f.label,
+      ...(f.note ? { note: f.note } : {}),
+      tasks: f.tasks,
+      workspaces: f.workspaces,
+      details: f.details,
+    }),
+  );
+  return [header, ...lines].join("\n") + "\n";
+}
+
 export function parseTraceJSONLToFrames(text: string): DVRFrame[] {
   const lines = text
     .split("\n")
@@ -101,6 +141,24 @@ export function parseTraceJSONLToFrames(text: string): DVRFrame[] {
     }
   }
   if (rawEvents.length === 0) return [];
+
+  // Lossless AX Central saved DVR session format (dvr.meta + dvr.frame records)
+  const dvrRecords = rawEvents.filter((ev) => ev.kind === "dvr.frame");
+  if (dvrRecords.length > 0) {
+    return dvrRecords.map((ev, idx) => ({
+      date: Number(ev.date) || Math.round((Number(ev.t) || idx) * 1000),
+      label: String(ev.label ?? `#${idx + 1}`),
+      note: ev.note ? String(ev.note) : undefined,
+      tasks: Array.isArray(ev.tasks) ? (ev.tasks as AXTask[]) : [],
+      workspaces: Array.isArray(ev.workspaces)
+        ? (ev.workspaces as AXWorkspace[])
+        : [],
+      details:
+        ev.details && typeof ev.details === "object"
+          ? (ev.details as Record<string, TaskDetail>)
+          : {},
+    }));
+  }
 
   const t0 = Number(rawEvents[0]?.t) || 0;
   const tasksMap = new Map<string, AXTask>();
@@ -402,6 +460,11 @@ export class Store extends EventTarget {
     this.state.tasks.filter((t) => this.state.details[t.id]?.workspace === ws);
   tasksUsingGateway = (gw: string) =>
     this.state.tasks.filter((t) => this.state.details[t.id]?.gateway === gw);
+  tasksUsingModel = (m: AXModel) =>
+    this.state.tasks.filter((t) => {
+      const d = this.state.details[t.id]?.model;
+      return Boolean(d && (d === m.name || d === m.model));
+    });
 
   async start(): Promise<void> {
     if (this.startPromise) return this.startPromise;
@@ -1038,32 +1101,110 @@ export class Store extends EventTarget {
     await this.refresh(true);
   }
 
-  async listTraceFiles(): Promise<{ name: string; path: string }[]> {
+  private safeTraceSegment(raw: string, fallback: string): string {
+    const clean = (raw || "").trim().replace(/[^a-zA-Z0-9._-]+/g, "_");
+    return clean && clean !== "." && clean !== ".." ? clean : fallback;
+  }
+
+  async listTraceFiles(): Promise<TraceFileEntry[]> {
     ensureStudioBridge();
     const info = await window.studio.platform();
+    const ctxSeg = this.safeTraceSegment(this.state.context, "local");
+    const atesSeg = this.safeTraceSegment(this.state.atespace, "default");
+    const savedDir = `${info.home}/.ax/traces/${ctxSeg}/${atesSeg}`;
     const expExpanded = this.state.settings.experimentsPath.replace(
       /^~/,
       info.home,
     );
-    const traceDir = `${expExpanded}/viz/traces`;
-    const r = await window.studio.run({
-      program: "/bin/sh",
-      args: [
-        "-c",
-        'dir="$1"; [ -d "$dir" ] || exit 0; for f in "$dir"/*.jsonl; do [ -f "$f" ] && printf "%s\\n" "$f"; done',
-        "list-traces",
-        traceDir,
-      ],
-    });
-    if (r.status !== 0 || !r.stdout.trim()) return [];
-    return r.stdout
-      .split("\n")
-      .map((l) => l.trim())
-      .filter(Boolean)
+    const sampleDir = `${expExpanded}/viz/traces`;
+    const listDir = async (dir: string): Promise<string[]> => {
+      const r = await window.studio.run({
+        program: "/bin/sh",
+        args: [
+          "-c",
+          'dir="$1"; [ -d "$dir" ] || exit 0; for f in "$dir"/*.jsonl; do [ -f "$f" ] && printf "%s\\n" "$f"; done',
+          "list-traces",
+          dir,
+        ],
+      });
+      if (r.status !== 0 || !r.stdout.trim()) return [];
+      return r.stdout
+        .split("\n")
+        .map((l) => l.trim())
+        .filter(Boolean);
+    };
+
+    const [savedPaths, samplePaths] = await Promise.all([
+      listDir(savedDir),
+      listDir(sampleDir),
+    ]);
+    const saved: TraceFileEntry[] = savedPaths
+      .sort()
+      .reverse()
       .map((p) => ({
         name: (p.split("/").pop() || p).replace(/\.jsonl$/, ""),
         path: p,
+        scope: "saved",
+        context: this.state.context,
+        atespace: this.state.atespace,
       }));
+    const samples: TraceFileEntry[] = samplePaths.sort().map((p) => ({
+      name: (p.split("/").pop() || p).replace(/\.jsonl$/, ""),
+      path: p,
+      scope: "sample",
+    }));
+    return [...saved, ...samples];
+  }
+
+  async saveDVRSession(
+    label?: string,
+  ): Promise<{ ok: boolean; path?: string; error?: string }> {
+    ensureStudioBridge();
+    const frames = this.state.dvrFrames;
+    if (frames.length === 0) {
+      return { ok: false, error: "No live DVR frames to save yet." };
+    }
+    const info = await window.studio.platform();
+    const ctxSeg = this.safeTraceSegment(this.state.context, "local");
+    const atesSeg = this.safeTraceSegment(this.state.atespace, "default");
+    const dir = `${info.home}/.ax/traces/${ctxSeg}/${atesSeg}`;
+    const stamp = new Date()
+      .toISOString()
+      .replace(/[-:]/g, "")
+      .replace(/\..+$/, "")
+      .replace("T", "-");
+    const fileStem = label?.trim()
+      ? this.safeTraceSegment(label, `dvr-${stamp}`)
+      : `dvr-${stamp}`;
+    const path = `${dir}/${fileStem}.jsonl`;
+    const backend =
+      this.state.context === "local"
+        ? "substrate-local:apple"
+        : this.state.context === "local-podman"
+          ? "substrate-local:podman"
+          : "kubernetes";
+    const jsonl = serializeDVRFramesToJSONL(frames, {
+      context: this.state.context || "local",
+      atespace: this.state.atespace || "default",
+      backend,
+      recorded_at: new Date().toISOString(),
+    });
+    const r = await window.studio.run({
+      program: "/bin/sh",
+      args: ["-c", 'mkdir -p "$1" && cat > "$2"', "save-dvr-trace", dir, path],
+      stdin: jsonl,
+    });
+    if (r.status !== 0) {
+      const err = errorSummary(r.stdout, r.stderr);
+      this.log("Save Session DVR", err, false);
+      return { ok: false, error: err };
+    }
+    this.log(
+      "Save Session DVR",
+      `${frames.length} frames → ${fileStem}.jsonl`,
+      true,
+    );
+    return { ok: true, path };
   }
 
   async loadTraceFile(path: string): Promise<DVRFrame[]> {

@@ -25,8 +25,14 @@ import {
   phaseColor,
   phaseLabel,
   repoName,
+  shortName,
 } from "../model/resources";
-import { type DVRFrame, type State, store } from "../model/store";
+import {
+  type DVRFrame,
+  type State,
+  type TraceFileEntry,
+  store,
+} from "../model/store";
 import { sharedStyles } from "../shared-styles";
 import "./overview-view";
 
@@ -311,16 +317,33 @@ export class AxTopology extends LitElement {
   @state() private hover: string | null = null;
   @state() private zoom = 1;
   @state() private dvrSource = "live";
-  @state() private traceFiles: { name: string; path: string }[] = [];
+  @state() private traceFiles: TraceFileEntry[] = [];
   @state() private traceFrames: DVRFrame[] = [];
   @state() private scrubIndex: number | null = null;
   @state() private playing = false;
+  @state() private savingDVR = false;
+  @state() private saveNotice = "";
+  private lastScopeKey = "";
   private offStore: (() => void) | null = null;
   private playTimer: ReturnType<typeof setInterval> | null = null;
 
   override connectedCallback(): void {
     super.connectedCallback();
-    this.offStore = store.subscribe(() => this.requestUpdate());
+    this.lastScopeKey = `${store.state.context}|${store.state.atespace}`;
+    this.offStore = store.subscribe(() => {
+      const nextKey = `${store.state.context}|${store.state.atespace}`;
+      if (nextKey !== this.lastScopeKey) {
+        this.lastScopeKey = nextKey;
+        const activeEntry = this.traceFiles.find(
+          (tf) => tf.path === this.dvrSource,
+        );
+        if (activeEntry?.scope === "saved") {
+          this.returnToLive();
+        }
+        void this.discoverTraces();
+      }
+      this.requestUpdate();
+    });
     void this.discoverTraces();
   }
 
@@ -332,6 +355,29 @@ export class AxTopology extends LitElement {
 
   private async discoverTraces(): Promise<void> {
     this.traceFiles = await store.listTraceFiles();
+  }
+
+  private async saveCurrentDVR(): Promise<void> {
+    if (this.savingDVR || store.state.dvrFrames.length === 0) return;
+    this.savingDVR = true;
+    this.saveNotice = "";
+    try {
+      const res = await store.saveDVRSession();
+      if (res.ok && res.path) {
+        await this.discoverTraces();
+        const fileName = res.path.split("/").pop() ?? "saved";
+        this.saveNotice = `Saved ${fileName}`;
+        setTimeout(() => {
+          if (this.saveNotice === `Saved ${fileName}`) {
+            this.saveNotice = "";
+          }
+        }, 3500);
+      } else {
+        this.saveNotice = res.error ?? "Save failed";
+      }
+    } finally {
+      this.savingDVR = false;
+    }
   }
 
   private async selectSource(src: string): Promise<void> {
@@ -427,11 +473,18 @@ export class AxTopology extends LitElement {
   }
 
   private renderDVRBar(frames: DVRFrame[], activeFrame: DVRFrame | null) {
+    const s = store.state;
     const isLiveFollowing =
       this.dvrSource === "live" && this.scrubIndex === null;
     const maxIdx = Math.max(0, frames.length - 1);
     const curIdx =
       this.scrubIndex !== null ? Math.min(this.scrubIndex, maxIdx) : maxIdx;
+    const ctxLabel = shortName(s.context || "local");
+    const savedTraces = this.traceFiles.filter((tf) => tf.scope === "saved");
+    const sampleTraces = this.traceFiles.filter((tf) => tf.scope === "sample");
+    const activeEntry = this.traceFiles.find(
+      (tf) => tf.path === this.dvrSource,
+    );
 
     return html`
       <div
@@ -446,17 +499,60 @@ export class AxTopology extends LitElement {
           @change=${(e: Event) =>
             void this.selectSource((e.target as HTMLSelectElement).value)}
         >
-          <option value="live" ?selected=${this.dvrSource === "live"}>
-            Session DVR (${store.state.dvrFrames.length} frames)
-          </option>
-          ${this.traceFiles.map(
-            (tf) => html`
-              <option value=${tf.path} ?selected=${this.dvrSource === tf.path}>
-                Trace: ${tf.name}.jsonl
-              </option>
-            `,
-          )}
+          <optgroup label="Live (${ctxLabel} · ${s.atespace})">
+            <option value="live" ?selected=${this.dvrSource === "live"}>
+              Session DVR (${s.dvrFrames.length} frames · ${ctxLabel})
+            </option>
+          </optgroup>
+          ${
+            savedTraces.length > 0
+              ? html`
+                  <optgroup label="Saved Traces (${ctxLabel} · ${s.atespace})">
+                    ${savedTraces.map(
+                      (tf) => html`
+                        <option
+                          value=${tf.path}
+                          ?selected=${this.dvrSource === tf.path}
+                        >
+                          Saved: ${tf.name}.jsonl
+                        </option>
+                      `,
+                    )}
+                  </optgroup>
+                `
+              : nothing
+          }
+          ${
+            sampleTraces.length > 0
+              ? html`
+                  <optgroup
+                    label="Offline Sample Library (ax-experiments/viz/traces)"
+                  >
+                    ${sampleTraces.map(
+                      (tf) => html`
+                        <option
+                          value=${tf.path}
+                          ?selected=${this.dvrSource === tf.path}
+                        >
+                          Sample: ${tf.name}.jsonl
+                        </option>
+                      `,
+                    )}
+                  </optgroup>
+                `
+              : nothing
+          }
         </select>
+
+        ${
+          activeEntry?.scope === "sample"
+            ? html`<span
+                class="caption faint"
+                title="Pre-recorded trace from ax-experiments/viz/traces (independent of active cluster)"
+                >Offline sample</span
+              >`
+            : nothing
+        }
 
         <button
           class="btn small icon"
@@ -502,6 +598,23 @@ export class AxTopology extends LitElement {
         }
 
         <span class="spacer"></span>
+
+        ${
+          this.saveNotice
+            ? html`<span class="caption" style="color:var(--green)"
+                >${this.saveNotice}</span
+              >`
+            : nothing
+        }
+
+        <button
+          class="btn small"
+          ?disabled=${this.savingDVR || s.dvrFrames.length === 0}
+          title="Save live Session DVR frames to ~/.ax/traces/${ctxLabel}/${s.atespace}/"
+          @click=${() => void this.saveCurrentDVR()}
+        >
+          ${icon("save", 12)} Save DVR
+        </button>
 
         <button
           class="btn small ${isLiveFollowing ? "primary" : ""}"

@@ -70,7 +70,11 @@ import {
   saveCredentialSecret,
   validateCredentialSecretInput,
 } from "./model/secrets";
-import { parseTraceJSONLToFrames, store } from "./model/store";
+import {
+  parseTraceJSONLToFrames,
+  serializeDVRFramesToJSONL,
+  store,
+} from "./model/store";
 import { TOOLS } from "./tools";
 import { parseJaegerTraceJSON, parseSlogFields } from "./views/task-logs";
 
@@ -854,14 +858,16 @@ describe("WebMCP ToolHost & AX tools", () => {
     await (overview as unknown as { updateComplete: Promise<boolean> })
       .updateComplete;
 
-    const modal = root.querySelector('[role="dialog"]');
+    const modal = root.querySelector('[role="dialog"]') as HTMLElement;
     expect(modal).not.toBeNull();
-    expect(modal!.textContent).toContain("Paired Credential Secrets");
-    expect(modal!.textContent).toContain("ax-system/gemini-api-key[api-key]");
-    expect(modal!.textContent).toContain("Secret key present");
-    expect(modal!.textContent).toContain("x-goog-api-key");
+    expect(modal.textContent).toContain("Paired Credential Secrets");
+    expect(modal.textContent).toContain("ax-system/gemini-api-key[api-key]");
+    expect(modal.textContent).toContain("Secret key present");
+    expect(modal.textContent).toContain("x-goog-api-key");
 
-    const results = await axe.run(modal as HTMLElement);
+    modal.style.animation = "none";
+    modal.style.opacity = "1";
+    const results = await axe.run(modal);
     expect(results.violations).toEqual([]);
   });
 
@@ -910,6 +916,105 @@ describe("WebMCP ToolHost & AX tools", () => {
       runOnly: ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"],
     });
     expect(axeRes.violations).toEqual([]);
+  });
+
+  it("serializes/replays cluster-scoped DVR traces and shows grouped optgroups + Save DVR (ax-central-of4) & Models/task cross-references (ax-central-nec)", async () => {
+    const frames = [
+      {
+        date: 1700000000000,
+        label: "10:00:00",
+        note: "Running: gemini-a1b2c3",
+        tasks: [
+          {
+            id: "default/gemini-a1b2c3",
+            name: "gemini-a1b2c3",
+            atespace: "default",
+            phase: "running" as const,
+            age: "1m",
+          },
+        ],
+        workspaces: [],
+        details: {},
+      },
+    ];
+    const jsonl = serializeDVRFramesToJSONL(frames, {
+      context: "local",
+      atespace: "default",
+      backend: "substrate-local:apple",
+      recorded_at: "2026-11-27T12:00:00Z",
+    });
+    expect(jsonl).toContain('"kind":"dvr.meta"');
+    expect(jsonl).toContain('"backend":"substrate-local:apple"');
+    const replayed = parseTraceJSONLToFrames(jsonl);
+    expect(replayed).toHaveLength(1);
+    expect(replayed[0]?.tasks[0]?.name).toBe("gemini-a1b2c3");
+    expect(replayed[0]?.note).toBe("Running: gemini-a1b2c3");
+
+    // Verify grouped optgroups + Save DVR button in <ax-topology>
+    const origRun = window.studio.run;
+    let savedPath = "";
+    window.studio.run = async (req) => {
+      if (req.args?.[2] === "list-traces") {
+        const dir = req.args[3] ?? "";
+        if (dir.includes("/.ax/traces/local/default")) {
+          return {
+            status: 0,
+            stdout: `${dir}/dvr-20261127-100000.jsonl\n`,
+            stderr: "",
+          };
+        }
+        return {
+          status: 0,
+          stdout: `${dir}/04-review-panel.jsonl\n`,
+          stderr: "",
+        };
+      }
+      if (req.args?.[2] === "save-dvr-trace") {
+        savedPath = req.args[4] ?? "";
+        return { status: 0, stdout: "", stderr: "" };
+      }
+      return origRun(req);
+    };
+    try {
+      store.set({ context: "local", atespace: "default" });
+      await store.refresh(true);
+      const topo = document.createElement("ax-topology");
+      document.body.append(topo);
+      await new Promise((r) => setTimeout(r, 30));
+      await (topo as unknown as { updateComplete: Promise<boolean> })
+        .updateComplete;
+
+      const tRoot = topo.shadowRoot!;
+      const optgroups = [...tRoot.querySelectorAll("optgroup")].map((g) =>
+        g.getAttribute("label"),
+      );
+      expect(optgroups).toEqual([
+        "Live (local · default)",
+        "Saved Traces (local · default)",
+        "Offline Sample Library (ax-experiments/viz/traces)",
+      ]);
+
+      const saveRes = await store.saveDVRSession("smoke-run");
+      expect(saveRes.ok).toBe(true);
+      expect(savedPath).toContain("/.ax/traces/local/default/smoke-run.jsonl");
+
+      // Verify Models table, clickable workspace task pill, and local validation-only Gateway badge in <ax-overview>
+      const overview = document.createElement("ax-overview");
+      document.body.append(overview);
+      await (overview as unknown as { updateComplete: Promise<boolean> })
+        .updateComplete;
+      const oRoot = overview.shadowRoot!;
+      const oText = (oRoot.textContent ?? "").replace(/\s+/g, " ");
+      expect(oText).toContain("Validation-only on substrate-local");
+      expect(oRoot.querySelector('table[aria-label="Models"]')).not.toBeNull();
+      expect(oText).toContain("default-model");
+      const refPill = oRoot.querySelector<HTMLButtonElement>(".task-ref-pill");
+      expect(refPill).not.toBeNull();
+      refPill!.click();
+      expect(store.state.selectedTaskID).toBe("default/gemini-a1b2c3");
+    } finally {
+      window.studio.run = origRun;
+    }
   });
 
   it("walks through the full E2E debian:12 flow on local (ate-local): Clusters -> Deploy -> Activity -> Logs -> Map -> Terminal -> WebMCP", async () => {

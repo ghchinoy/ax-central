@@ -123,6 +123,7 @@ export interface TaskDetail {
   resolvedArgv?: string[];
   goal?: string;
   gateway?: string;
+  model?: string;
   conditions: Condition[];
   manifest: string;
 }
@@ -422,6 +423,12 @@ export function parseTaskYAML(text: string): TaskDetail {
             ? spec.goal
             : undefined,
     gateway: spec.gateway?.name,
+    model:
+      typeof spec.model?.name === "string"
+        ? spec.model.name
+        : typeof spec.config?.model === "string"
+          ? spec.config.model
+          : undefined,
     conditions: Array.isArray(status.conditions)
       ? status.conditions.map((c: any) => ({
           type: String(c.type ?? ""),

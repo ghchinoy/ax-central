@@ -26,6 +26,7 @@ import {
 } from "../icons";
 import {
   type AXGateway,
+  type AXModel,
   type AXTask,
   type AXWorkspace,
   type Condition,
@@ -1680,6 +1681,7 @@ export class AxOverview extends LitElement {
   @state() private movingTask: AXTask | null = null;
   @state() private confirmWorkspace: AXWorkspace | null = null;
   @state() private confirmGateway: AXGateway | null = null;
+  @state() private confirmModel: AXModel | null = null;
   @state() private activeGateway: AXGateway | null = null;
   @state() private gatewaySecretChecks: Record<string, CredentialSecretStatus> =
     {};
@@ -1715,6 +1717,7 @@ export class AxOverview extends LitElement {
       if (this.menu) this.menu = null;
       else if (this.activeGateway) this.activeGateway = null;
       else if (this.confirmGateway) this.confirmGateway = null;
+      else if (this.confirmModel) this.confirmModel = null;
     }
   };
 
@@ -1993,9 +1996,8 @@ export class AxOverview extends LitElement {
                     </tr>
                   </thead>
                   <tbody>
-                    ${workspaces.map((w) => {
-                      const n = users(w).length;
-                      return html`
+                    ${workspaces.map(
+                      (w) => html`
                         <tr class="task-row" style="--c:var(--purple)">
                           <td class="col-name">
                             <span class="row task-row-ws">
@@ -2043,8 +2045,8 @@ export class AxOverview extends LitElement {
                                 : html`<span class="faint">–</span>`
                             }
                           </td>
-                          <td class="col-used num">
-                            ${n || html`<span class="faint">0</span>`}
+                          <td class="col-used">
+                            ${this.renderTaskRefs(users(w))}
                           </td>
                           <td class="col-actions">
                             <div class="task-row-actions">
@@ -2059,8 +2061,8 @@ export class AxOverview extends LitElement {
                             </div>
                           </td>
                         </tr>
-                      `;
-                    })}
+                      `,
+                    )}
                   </tbody>
                 </table>
               </div>
@@ -2354,7 +2356,7 @@ export class AxOverview extends LitElement {
                 `
           }
           ${this.renderWorkspaces()} ${this.renderGateways()}
-          ${this.renderSnapshots()}
+          ${this.renderModels()} ${this.renderSnapshots()}
         </div>
 
         <ax-task-inspector></ax-task-inspector>
@@ -2427,6 +2429,11 @@ export class AxOverview extends LitElement {
         ${
           this.confirmGateway
             ? this.renderDeleteGatewayModal(this.confirmGateway)
+            : nothing
+        }
+        ${
+          this.confirmModel
+            ? this.renderDeleteModelModal(this.confirmModel)
             : nothing
         }
         ${
@@ -2688,8 +2695,35 @@ ${
     }
   }
 
+  private renderTaskRefs(tasks: AXTask[]) {
+    if (tasks.length === 0) {
+      return html`<span class="faint">0</span>`;
+    }
+    const first = tasks[0]!;
+    return html`
+      <span class="task-ref-wrap">
+        <button
+          type="button"
+          class="task-ref-pill"
+          title="Used by ${tasks.map((t) => t.name).join(", ")} — click to inspect ${first.name}"
+          @click=${(e: Event) => {
+            e.stopPropagation();
+            store.set({ selectedTaskID: first.id });
+          }}
+        >
+          ${
+            tasks.length === 1
+              ? html`<bdi dir="ltr">${first.name}</bdi>`
+              : `${tasks.length} tasks`
+          }
+        </button>
+      </span>
+    `;
+  }
+
   private renderGateways() {
     const s = store.state;
+    const local = isLocalContext(s.context);
     const gateways = [...s.gateways].sort((a, b) =>
       a.name.localeCompare(b.name),
     );
@@ -2700,6 +2734,16 @@ ${
           >Outbound egress allowlists &amp; credential header injection
           policies.</span
         >
+        ${
+          local
+            ? html`<span
+                class="gw-local-badge"
+                title="substrate-local stores ActorEgressPolicy for API validation only; outbound egress allowlists and Kubernetes Secret injection are enforced on Kind (ax local) and GKE."
+                >${icon("alert", 11, { color: "var(--warn)" })} Validation-only
+                on substrate-local (enforced on Kind / GKE)</span
+              >`
+            : nothing
+        }
       </div>
       ${
         gateways.length === 0
@@ -2740,7 +2784,7 @@ ${
                   </thead>
                   <tbody>
                     ${gateways.map((gw) => {
-                      const n = store.tasksUsingGateway(gw.name).length;
+                      const boundTasks = store.tasksUsingGateway(gw.name);
                       return html`
                         <tr
                           class="task-row"
@@ -2792,8 +2836,8 @@ ${
                                 : html`<span class="faint">none</span>`
                             }
                           </td>
-                          <td class="col-used num">
-                            ${n || html`<span class="faint">0</span>`}
+                          <td class="col-used">
+                            ${this.renderTaskRefs(boundTasks)}
                           </td>
                           <td
                             class="col-actions"
@@ -3040,6 +3084,128 @@ ${gw.manifest}</pre>
               @click=${() => {
                 close();
                 void store.remove("gateway", gw.name);
+              }}
+            >
+              Delete
+            </button>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  private renderModels() {
+    const s = store.state;
+    const models = [...s.models].sort((a, b) => a.name.localeCompare(b.name));
+    if (models.length === 0) return nothing;
+    return html`
+      <div class="row board-head" style="margin-top:18px" id="model-board">
+        <h2>Models</h2>
+        <span class="caption faint"
+          >Registered LLM model profiles &amp; credential bindings.</span
+        >
+      </div>
+      <div class="card task-table-wrap">
+        <table class="task-table" aria-label="Models">
+          <thead>
+            <tr>
+              <th class="col-name"><span class="th-label">Name</span></th>
+              <th class="col-mcp"><span class="th-label">Provider</span></th>
+              <th class="col-repos"><span class="th-label">Model ID</span></th>
+              <th class="col-files"><span class="th-label">Secret</span></th>
+              <th class="col-used"><span class="th-label">Tasks</span></th>
+              <th class="col-actions"><span class="sr">Actions</span></th>
+            </tr>
+          </thead>
+          <tbody>
+            ${models.map((m) => {
+              const boundTasks = store.tasksUsingModel(m);
+              return html`
+                <tr class="task-row" style="--c:var(--teal)">
+                  <td class="col-name">
+                    <span class="row task-row-ws">
+                      ${icon("cpu", 13, { color: "var(--teal)" })}
+                      <span class="task-row-name ellipsis" title=${m.name}
+                        ><bdi dir="ltr">${m.name}</bdi></span
+                      >
+                    </span>
+                  </td>
+                  <td class="col-mcp ellipsis">
+                    ${m.provider || html`<span class="faint">–</span>`}
+                  </td>
+                  <td class="col-repos mono ellipsis" title=${m.model}>
+                    ${
+                      m.model
+                        ? html`<bdi dir="ltr">${m.model}</bdi>`
+                        : html`<span class="faint">–</span>`
+                    }
+                  </td>
+                  <td class="col-files mono ellipsis">
+                    ${
+                      m.secretName
+                        ? html`<bdi dir="ltr"
+                            >${m.secretName}${
+                              m.secretKey ? `/${m.secretKey}` : ""
+                            }</bdi
+                          >`
+                        : html`<span class="faint">–</span>`
+                    }
+                  </td>
+                  <td class="col-used">${this.renderTaskRefs(boundTasks)}</td>
+                  <td class="col-actions">
+                    <div class="task-row-actions">
+                      <button
+                        class="btn ghost small icon danger"
+                        title="Delete model"
+                        aria-label="Delete model ${m.name}"
+                        @click=${() => (this.confirmModel = m)}
+                      >
+                        ${icon("trash", 12)}
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              `;
+            })}
+          </tbody>
+        </table>
+      </div>
+    `;
+  }
+
+  private renderDeleteModelModal(m: AXModel) {
+    const users = store.tasksUsingModel(m);
+    const close = () => {
+      this.confirmModel = null;
+    };
+    return html`
+      <div class="modal-backdrop" @mousedown=${close}>
+        <div
+          class="modal card fade-in"
+          role="dialog"
+          aria-label="Delete model"
+          @mousedown=${(e: Event) => e.stopPropagation()}
+        >
+          <h3>Delete model “${m.name}”?</h3>
+          <p class="muted" style="margin:0 0 18px;line-height:1.5">
+            It's removed from <strong>${m.atespace}</strong>. This can't be
+            undone.
+            ${
+              users.length > 0
+                ? html`
+                    Referenced by ${users.length === 1 ? "task" : "tasks"}
+                    <strong>${users.map((t) => t.name).join(", ")}</strong>.
+                  `
+                : nothing
+            }
+          </p>
+          <div class="row" style="justify-content:flex-end">
+            <button class="btn" @click=${close}>Cancel</button>
+            <button
+              class="btn primary danger"
+              @click=${() => {
+                close();
+                void store.remove("model", m.name);
               }}
             >
               Delete
@@ -3508,6 +3674,40 @@ ${gw.manifest}</pre>
         overflow: auto;
         white-space: pre-wrap;
         word-break: break-word;
+      }
+      .gw-local-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        padding: 2px 8px;
+        border-radius: 999px;
+        font-size: 11px;
+        font-weight: 500;
+        background: var(--surface-container-high);
+        border: 1px solid var(--border);
+        color: var(--on-surface-variant);
+      }
+      .task-ref-wrap {
+        display: inline-flex;
+        align-items: center;
+      }
+      .task-ref-pill {
+        border: 1px solid var(--border);
+        background: var(--surface-container-high);
+        color: var(--on-surface);
+        border-radius: 999px;
+        padding: 1px 8px;
+        font-size: 11px;
+        font-weight: 500;
+        cursor: pointer;
+        max-width: 110px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .task-ref-pill:hover {
+        border-color: var(--primary);
+        color: var(--primary);
       }
     `,
   ];
