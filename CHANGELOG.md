@@ -6,6 +6,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and [Common Changelog](https://common-changelog.org/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0](https://github.com/ghchinoy/ax-central/compare/v0.6.1...v0.7.0) (2026-11-27)
+
+
+### Features
+
+* **clusters:** install and uninstall AX on existing clusters with ax install preflight ([67bd6d7](https://github.com/ghchinoy/ax-central/commit/67bd6d77417258d90668cb6ed6f19ce177b55c87))
+* **clusters:** switch active cluster focus on card click and rename (ate-local) labels to (substrate-local) (ax-central-xdk) ([18256c4](https://github.com/ghchinoy/ax-central/commit/18256c4766f9ad86bca11e06d4325c068aaa22f1))
+* **designer:** add inline Gateway builder, host allowlist presets & paired Secrets (ax-central-0xy) ([258b85c](https://github.com/ghchinoy/ax-central/commit/258b85cb62396d211f1b395eff7e655798b03fc8))
+* **gateways:** add Gateways table, inspector with live Secret checks, and WebMCP tools (ax-central-kmy) ([846def7](https://github.com/ghchinoy/ax-central/commit/846def7be1cd9776bdf09d253f2d7286e0abb9af))
+* **grpc:** adopt google/ax/client direct gRPC for Tasks/Workspaces/Models/Gateways (ax-central-68s) ([f7333b0](https://github.com/ghchinoy/ax-central/commit/f7333b0e925f95373264fdc16db08522263580b2))
+* **map,overview:** add cluster-scoped Trace Library + Save DVR, Models/task cross-refs & local Gateway boundary badge (ax-central-of4, ax-central-nec) ([7820f48](https://github.com/ghchinoy/ax-central/commit/7820f48ca29e8c4894f62ac3ebc4c4642841fc70))
+* **secrets:** add stdin-piped Kubernetes Gateway Credential Secret management (ax-central-g26) ([14c1188](https://github.com/ghchinoy/ax-central/commit/14c118837e349c07a057cc395620980dc667e0e3))
+* **substrate-local:** integrate standalone ~/projects/substrate-local into AX Central (ax-central-170) ([50bef05](https://github.com/ghchinoy/ax-central/commit/50bef052b4d2d0845d38544bdbdfe9a86ecab4e8))
+* **v0.4:** align AX Central to google/ax [#731](https://github.com/ghchinoy/ax-central/issues/731), [#756](https://github.com/ghchinoy/ax-central/issues/756), [#734](https://github.com/ghchinoy/ax-central/issues/734), and [#678](https://github.com/ghchinoy/ax-central/issues/678) ([8cb1272](https://github.com/ghchinoy/ax-central/commit/8cb1272ebb62def19d5f57ebb290c434888b45cc))
+
+
+### Bug Fixes
+
+* **move,designer,clusters:** align with AX v0.4 ax-runner ([#677](https://github.com/ghchinoy/ax-central/issues/677)), required profile.image ([#647](https://github.com/ghchinoy/ax-central/issues/647)), and Profile.ateTemplate ([#593](https://github.com/ghchinoy/ax-central/issues/593)) ([a0391a9](https://github.com/ghchinoy/ax-central/commit/a0391a924b3e6689b3261b898d24c38e2f9f1cd2))
+* **schema,clusters:** align Goal.text, status.ateTemplate, ax-local context, and ~/.ax/bin with google/ax[#603](https://github.com/ghchinoy/ax-central/issues/603)-[#642](https://github.com/ghchinoy/ax-central/issues/642) ([37988c9](https://github.com/ghchinoy/ax-central/commit/37988c92340bef93fed4747191fa3144a25c695b))
+
 ## [0.6.1] - 2026-11-15
 
 ### Fixed
